@@ -80,9 +80,9 @@
   :root:not([data-theme="light"]) .job-total b{ color: var(--accent); }
   :root[data-theme="dark"] .job-total b{ color: var(--accent); }
 
-  .job-inputs{ display:flex; gap:10px; }
-  .field{ display:flex; flex-direction:column; gap:4px; flex:1; }
-  .field label{ font-size:.72rem; color: var(--ink-soft); font-weight:500; line-height:1.3; min-height:2.6em; }
+  .job-inputs{ display:grid; grid-template-rows:auto auto; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px 10px; }
+  .field{ display:contents; }
+  .field label{ font-size:.72rem; color: var(--ink-soft); font-weight:500; line-height:1.3; }
   .field label .opt{ color: var(--ink-faint); font-weight:400; }
   .field input[type=number]{
     font-family:'IBM Plex Mono', monospace; font-size:.95rem; font-variant-numeric: tabular-nums;
@@ -179,7 +179,9 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
   var EXP_BY_LEVEL = {72:539163, 74:603972, 76:695286, 78:816867, 80:1024632,
     81:1055241, 83:1232055, 85:1417077, 87:1629459, 89:1853298, 90:2270538,
     91:2335689, 93:2720952, 95:3122973, 97:3583647, 99:4067919, 100:4962933};
-  var LEVELS_ASC = [72,74,76,78,80,81,83,85,87,89,90,91,93,95,97,99,100];
+  // Derived from EXP_BY_LEVEL (the primary table) instead of hand-duplicated, so the level set
+  // can't silently drift out of sync with it.
+  var LEVELS_ASC = Object.keys(EXP_BY_LEVEL).map(Number).sort(function(a, b){ return a - b; });
 
   var CLASS_ITEMS = {
     Carpenter: {72:"White Oak Partisan", 74:"Applewood Staff", 76:"White Ash Earrings", 78:"Sandteak Fauchard", 80:"Lignum Vitae Grinding Wheel",
@@ -237,10 +239,16 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
       81:35661,83:35662,85:35663,87:35664,89:35665,90:36626,91:44227,93:44228,95:44229,97:44230,99:44231,100:44232}
   };
 
+  // Label->level lookup is static per job (built from CLASS_ITEMS/LEVELS_ASC, neither of which
+  // change at runtime), so it's built once per job and cached instead of rebuilt on every call.
+  var LABEL_TO_LEVEL_CACHE = {};
   function itemIdForLabel(job, label){
-    var levelByLabel = {};
-    LEVELS_ASC.forEach(function(lvl){ levelByLabel['Rarefied ' + CLASS_ITEMS[job][lvl]] = lvl; });
-    return ITEM_IDS[job][levelByLabel[label]];
+    if(!LABEL_TO_LEVEL_CACHE[job]){
+      var map = {};
+      LEVELS_ASC.forEach(function(lvl){ map['Rarefied ' + CLASS_ITEMS[job][lvl]] = lvl; });
+      LABEL_TO_LEVEL_CACHE[job] = map;
+    }
+    return ITEM_IDS[job][LABEL_TO_LEVEL_CACHE[job][label]];
   }
 
   function teamcraftItemUrl(job, label){
@@ -248,14 +256,20 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
     return 'https://ffxivteamcraft.com/db/en/item/' + itemIdForLabel(job, label) + '/' + slug;
   }
 
+  // Shared "item/<id>+<qty>" part builder used by both the single-job and all-jobs Garland links
+  // below, so the two stay in sync if the encoding ever needs to change.
+  function garlandPartsFor(job, order, counts){
+    return order.map(function(label){
+      return 'item/' + itemIdForLabel(job, label) + '+' + counts[label];
+    });
+  }
+
   // Builds a Garland Tools "group" link encoding item IDs + quantities. Teamcraft's list importer
   // (Lists -> import icon -> "paste link to external list") reads this format directly and turns
   // it into "add N of item X" lines for a real Teamcraft list -- verified against Teamcraft's own
   // open-source parser for garlandtools.org/db/#group/ links.
   function buildGarlandImportLink(job, order, counts){
-    var parts = order.map(function(label){
-      return 'item/' + itemIdForLabel(job, label) + '+' + counts[label];
-    });
+    var parts = garlandPartsFor(job, order, counts);
     return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
   }
 
@@ -278,6 +292,19 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
     91:305279, 93:350860, 95:397220, 97:449528, 99:499569, 100:522414};
   var EXP_LEVEL_MOD = [100,96,92,88,84,80,75,70,65,60,55,45,35,25,20,18,16,15,14,13,12,10]; // index = level difference 0-21
 
+  // CLASS_ITEMS, ITEM_IDS, and RECIPE_BASE_EXP are still hand-maintained per level/job -- warn
+  // loudly instead of silently producing NaN/undefined if one of them ever misses a key the
+  // others have.
+  (function validateLevelTables(){
+    LEVELS_ASC.forEach(function(lvl){
+      if(!(lvl in RECIPE_BASE_EXP)) console.warn('RECIPE_BASE_EXP is missing level ' + lvl);
+      JOB_ORDER.forEach(function(job){
+        if(!(lvl in CLASS_ITEMS[job])) console.warn('CLASS_ITEMS.' + job + ' is missing level ' + lvl);
+        if(!(lvl in ITEM_IDS[job])) console.warn('ITEM_IDS.' + job + ' is missing level ' + lvl);
+      });
+    });
+  })();
+
   // Craft EXP for turning out one copy of a Rarefied item at recipeLevel while your job is at
   // jobLevel, assuming 100% quality (the max-collectability-max-quality assumption this tool makes
   // throughout) and no external buffs (rested/food/FC, which we're deliberately not modeling).
@@ -288,11 +315,17 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
     return recipeExp * 4; // (1 + 300% max-quality bonus)
   }
 
+  // Static per job (CLASS_ITEMS/EXP_BY_LEVEL/LEVELS_ASC never change at runtime), so built once
+  // per job and cached instead of reallocated on every computeForJob call.
+  var TIERS_CACHE = {};
   function tiersFor(job){
-    var items = CLASS_ITEMS[job];
-    return LEVELS_ASC.map(function(lvl){
-      return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, level: lvl, exp: EXP_BY_LEVEL[lvl] };
-    });
+    if(!TIERS_CACHE[job]){
+      var items = CLASS_ITEMS[job];
+      TIERS_CACHE[job] = LEVELS_ASC.map(function(lvl){
+        return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, level: lvl, exp: EXP_BY_LEVEL[lvl] };
+      });
+    }
+    return TIERS_CACHE[job];
   }
 
   function bestTierAt(level, tiers){
@@ -438,9 +471,7 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
   function buildCombinedGarlandImportLink(perJobResults){
     var parts = [];
     perJobResults.forEach(function(r){
-      r.order.forEach(function(label){
-        parts.push('item/' + itemIdForLabel(r.job, label) + '+' + r.counts[label]);
-      });
+      parts = parts.concat(garlandPartsFor(r.job, r.order, r.counts));
     });
     return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
   }
@@ -487,8 +518,6 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
       consolidatedBar.innerHTML = '';
     }
   }
-
-  jobGrid.addEventListener('input', recalcAll);
 
   document.body.addEventListener('click', function(e){
     var btn = e.target.closest('.copy-btn');
@@ -544,16 +573,24 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
 
   var STORAGE_KEY = 'ffxiv-collectable-ledger-v1';
   function saveToLocalStorage(){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot())); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot())); }
+    catch(e){ console.warn('Could not save your inputs to this browser (storage full, blocked, or private browsing):', e); }
   }
   function loadFromLocalStorage(){
     try{
       var raw = localStorage.getItem(STORAGE_KEY);
       return raw ? JSON.parse(raw) : null;
-    }catch(e){ return null; }
+    }catch(e){ console.warn('Could not load your saved inputs (corrupted or blocked storage):', e); return null; }
   }
 
-  jobGrid.addEventListener('input', saveToLocalStorage);
+  // One listener instead of two separate full-DOM-pass handlers per keystroke; the save itself is
+  // debounced since localStorage.setItem is synchronous and doesn't need to run on every keystroke.
+  var saveDebounceTimer = null;
+  jobGrid.addEventListener('input', function(){
+    recalcAll();
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(saveToLocalStorage, 400);
+  });
 
   boot(loadFromLocalStorage());
 

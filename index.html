@@ -1711,10 +1711,14 @@
     saveDebounceTimer = setTimeout(saveToLocalStorage, 400);
   });
 
+  function setAllCraftComponents(checked){
+    craftAllCheckbox.checked = checked;
+    jobGrid.querySelectorAll('[data-f="craftComponents"]').forEach(function(cb){ cb.checked = checked; });
+  }
+
   // Clicking while indeterminate (a mix of on/off) selects all, same as a native "select all" box.
   craftAllCheckbox.addEventListener('input', function(){
-    var checked = craftAllCheckbox.checked;
-    jobGrid.querySelectorAll('[data-f="craftComponents"]').forEach(function(cb){ cb.checked = checked; });
+    setAllCraftComponents(craftAllCheckbox.checked);
     recalcAll();
     clearTimeout(saveDebounceTimer);
     saveDebounceTimer = setTimeout(saveToLocalStorage, 400);
@@ -1857,6 +1861,18 @@
   function updateGatherSubTogglesVisibility(){
     gatherSubToggles.hidden = !gatherOwnCheckbox.checked;
   }
+
+  // Buying components after gathering the raw materials to make them yourself doesn't make sense --
+  // turning gathering on also switches every job over to crafting its own components. This listener
+  // must run before the generic one below (registered first, so it fires first) so the checkboxes
+  // are already updated by the time that listener's recalcAll() reads them.
+  gatherOwnCheckbox.addEventListener('input', function(){
+    if(gatherOwnCheckbox.checked && !craftAllCheckbox.checked){
+      setAllCraftComponents(true);
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = setTimeout(saveToLocalStorage, 400);
+    }
+  });
   [gatherOwnCheckbox, gatherTimedCheckbox, gatherFishCheckbox, gatherOtherCheckbox].forEach(function(cb){
     cb.addEventListener('input', function(){
       updateGatherSubTogglesVisibility();

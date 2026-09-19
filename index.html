@@ -63,6 +63,9 @@
   :root:not([data-theme="light"]) .summary-item .val{ color: var(--accent); }
   :root[data-theme="dark"] .summary-item .val{ color: var(--accent); }
 
+  .consolidated-bar{ flex-direction:column; align-items:flex-start; gap:10px; border-color: var(--accent); }
+  .consolidated-bar .summary-item .val{ font-size:1.05rem; }
+
   .job-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; }
 
   .job-card{
@@ -136,7 +139,9 @@
 
   <div class="job-grid" id="jobGrid"></div>
 
-  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it. The turn-in reward isn't the only EXP a cycle gives, though: crafting the item itself also grants ordinary completion EXP, boosted by rested EXP, being under-leveled, and other bonuses. That amount is too buff-dependent (and depletes as rested EXP runs out) to model exactly, so "Craft EXP bonus" lets you add whatever you're actually seeing per craft on top of the turn-in reward -- check your EXP gain after a synthesis and update it as your buffs change.</p>
+  <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
+
+  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it. The turn-in reward isn't the only EXP a cycle gives, though: crafting the item itself also grants ordinary completion EXP, and that's now baked into every turn-in too -- computed from the game's own base-EXP-per-recipe-level and level-difference tables, assuming 100% quality (the same +300% max-quality bonus max collectability implies) and no external buffs like rested EXP or food, which we're deliberately leaving out since they're not steady-state.</p>
 
   <footer>
     Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item.
@@ -230,10 +235,30 @@
 
   var fmt = function(n){ return Math.round(n).toLocaleString('en-US'); };
 
+  // Craft-completion EXP (separate from the appraiser's turn-in reward): the game's own base
+  // recipe EXP per apparent recipe level, and the level-difference modifier applied when your job
+  // is above the recipe's level. Formula and both tables verified against a community-reversed
+  // spreadsheet (in-game screenshots + tests) and cross-checked against a real reported value:
+  // a level-81 recipe at 0 level difference and +350% (300% max-quality + 50% rested, per the
+  // source data) comes out to ~209,326 EXP, matching a real observed 209,321.
+  var RECIPE_BASE_EXP = {81:139553, 83:157261, 85:182593, 87:208955, 89:230926, 90:239004,
+    91:305279, 93:350860, 95:397220, 97:449528, 99:499569, 100:522414};
+  var EXP_LEVEL_MOD = [100,96,92,88,84,80,75,70,65,60,55,45,35,25,20,18,16,15,14,13,12,10]; // index = level difference 0-21
+
+  // Craft EXP for turning out one copy of a Rarefied item at recipeLevel while your job is at
+  // jobLevel, assuming 100% quality (the max-collectability-max-quality assumption this tool makes
+  // throughout) and no external buffs (rested/food/FC, which we're deliberately not modeling).
+  function craftCompletionExp(recipeLevel, jobLevel){
+    var diff = Math.max(0, Math.min(21, jobLevel - recipeLevel));
+    var mod = EXP_LEVEL_MOD[diff];
+    var recipeExp = Math.floor(RECIPE_BASE_EXP[recipeLevel] / 3 * mod / 100);
+    return recipeExp * 4; // (1 + 300% max-quality bonus)
+  }
+
   function tiersFor(job){
     var items = CLASS_ITEMS[job];
     return LEVELS_ASC.map(function(lvl){
-      return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, exp: EXP_BY_LEVEL[lvl] };
+      return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, level: lvl, exp: EXP_BY_LEVEL[lvl] };
     });
   }
 
@@ -247,14 +272,14 @@
 
   // Simulates turn-in by turn-in from (level, exp) to the target level, carrying leftover EXP
   // forward and switching to a better-paying collectable the instant it unlocks. Levels below 81
-  // have no collectable yet, so that stretch is tallied separately as plain EXP. craftBonus is an
-  // optional flat amount of EXP the *act of crafting* the item itself grants (separate from the
-  // appraiser's collectability reward), added on top of every turn-in.
-  function computeForJob(job, level, exp, target, craftBonus){
+  // have no collectable yet, so that stretch is tallied separately as plain EXP. Each turn-in also
+  // earns craft-completion EXP for the craft itself (at 100% quality, no external buffs), on top
+  // of the appraiser's collectability reward -- computed from the current job level at the moment
+  // of that craft, so the level-difference modifier applies correctly if it's ever not 0.
+  function computeForJob(job, level, exp, target){
     var tiers = tiersFor(job);
     level = Math.max(1, Math.min(100, Math.round(level) || 1));
     target = Math.max(1, Math.min(100, Math.round(target) || 100));
-    craftBonus = Math.max(0, craftBonus || 0);
     if(level >= target){ return { done: true, alreadyThere: true, target: target }; }
 
     var expAtCur = EXP_TO_NEXT[level] || 0;
@@ -275,7 +300,7 @@
       totalTurnins++;
       if(!(tier.label in counts)){ counts[tier.label] = 0; order.push(tier.label); }
       counts[tier.label]++;
-      remaining -= (tier.exp + craftBonus);
+      remaining -= (tier.exp + craftCompletionExp(tier.level, simLevel));
       while(remaining <= 0 && simLevel < target){
         simLevel++;
         if(simLevel >= target) break;
@@ -288,6 +313,7 @@
 
   var jobGrid = document.getElementById('jobGrid');
   var summaryBar = document.getElementById('summaryBar');
+  var consolidatedBar = document.getElementById('consolidatedBar');
 
   JOB_ORDER.forEach(function(job){
     var card = document.createElement('div');
@@ -299,10 +325,7 @@
       '<div class="job-inputs">' +
         '<div class="field"><label>Current level</label><input type="number" min="1" max="100" value="' + ex[0] + '" data-f="level"></div>' +
         '<div class="field"><label>Current EXP</label><input type="number" min="0" step="1" value="' + ex[1] + '" data-f="exp"></div>' +
-      '</div>' +
-      '<div class="job-inputs">' +
         '<div class="field"><label>Target lv <span class="opt">(optional)</span></label><input type="number" min="2" max="100" placeholder="100" data-f="target"></div>' +
-        '<div class="field"><label>Craft EXP bonus <span class="opt">(optional)</span></label><input type="number" min="0" step="1" placeholder="0" data-f="craftBonus"></div>' +
       '</div>' +
       '<div class="job-progress" data-r="progress"></div>' +
       '<div data-r="body"></div>';
@@ -314,15 +337,13 @@
     var levelInput = card.querySelector('[data-f="level"]');
     var expInput = card.querySelector('[data-f="exp"]');
     var targetInput = card.querySelector('[data-f="target"]');
-    var craftBonusInput = card.querySelector('[data-f="craftBonus"]');
     var level = parseFloat(levelInput.value) || 1;
     var expAtCur = EXP_TO_NEXT[Math.max(1, Math.min(100, Math.round(level)))] || 0;
     var exp = Math.max(0, Math.min(expAtCur, parseFloat(expInput.value) || 0));
     var targetRaw = parseFloat(targetInput.value);
     var target = targetRaw ? targetRaw : 100;
-    var craftBonus = Math.max(0, parseFloat(craftBonusInput.value) || 0);
 
-    var result = computeForJob(job, level, exp, target, craftBonus);
+    var result = computeForJob(job, level, exp, target);
     var totalEl = card.querySelector('[data-r="total"]');
     var progressEl = card.querySelector('[data-r="progress"]');
     var bodyEl = card.querySelector('[data-r="body"]');
@@ -338,8 +359,7 @@
 
     totalEl.innerHTML = '<b class="num">' + fmt(result.totalTurnins) + '</b> turn-ins';
     progressEl.innerHTML = fmt(exp) + ' / ' + fmt(expAtCur) + ' EXP in level ' + result.startLevel +
-      (result.target !== 100 ? ' &rarr; target lv ' + result.target : '') +
-      (craftBonus > 0 ? ' &middot; +' + fmt(craftBonus) + ' craft EXP/turn-in included' : '');
+      (result.target !== 100 ? ' &rarr; target lv ' + result.target : '');
 
     var html = '';
     if(result.preExp > 0){
@@ -360,25 +380,56 @@
       '</div>';
     bodyEl.innerHTML = html;
 
-    return { totalTurnins: result.totalTurnins };
+    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts };
+  }
+
+  function buildCombinedGarlandImportLink(perJobResults){
+    var parts = [];
+    perJobResults.forEach(function(r){
+      r.order.forEach(function(label){
+        parts.push('item/' + itemIdForLabel(r.job, label) + '+' + r.counts[label]);
+      });
+    });
+    return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
   }
 
   function recalcAll(){
     var grandTotal = 0;
     var jobsInProgress = 0;
+    var perJobResults = [];
+    var distinctItems = 0;
     jobGrid.querySelectorAll('.job-card').forEach(function(card){
       var r = renderJob(card);
       grandTotal += r.totalTurnins;
-      if(r.totalTurnins > 0) jobsInProgress++;
+      if(r.totalTurnins > 0){
+        jobsInProgress++;
+        perJobResults.push(r);
+        distinctItems += r.order.length;
+      }
     });
     summaryBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Jobs still leveling</span><span class="val num">' + jobsInProgress + ' / 8</span></div>' +
       '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>';
+
+    if(perJobResults.length){
+      var combinedUrl = buildCombinedGarlandImportLink(perJobResults);
+      consolidatedBar.hidden = false;
+      consolidatedBar.innerHTML =
+        '<div class="summary-item"><span class="lbl">All jobs, one list</span><span class="val num">' +
+          distinctItems + ' items &middot; ' + fmt(grandTotal) + ' turn-ins</span></div>' +
+        '<div class="import-row">' +
+          '<button type="button" class="copy-btn" data-copy="' + combinedUrl.replace(/"/g, '&quot;') + '">Copy consolidated Teamcraft import link</button>' +
+          '<span class="copy-flag" hidden>Copied!</span>' +
+        '</div>';
+    } else {
+      consolidatedBar.hidden = true;
+      consolidatedBar.innerHTML = '';
+    }
   }
 
   jobGrid.addEventListener('input', recalcAll);
 
-  jobGrid.addEventListener('click', function(e){
+  document.body.addEventListener('click', function(e){
     var btn = e.target.closest('.copy-btn');
     if(!btn) return;
     var url = btn.dataset.copy;
@@ -414,8 +465,7 @@
       state[card.dataset.job] = {
         level: card.querySelector('[data-f="level"]').value,
         exp: card.querySelector('[data-f="exp"]').value,
-        target: card.querySelector('[data-f="target"]').value,
-        craftBonus: card.querySelector('[data-f="craftBonus"]').value
+        target: card.querySelector('[data-f="target"]').value
       };
     });
     return state;
@@ -428,7 +478,6 @@
         card.querySelector('[data-f="level"]').value = s.level;
         card.querySelector('[data-f="exp"]').value = s.exp;
         card.querySelector('[data-f="target"]').value = s.target || '';
-        card.querySelector('[data-f="craftBonus"]').value = s.craftBonus || '';
       });
     }
     recalcAll();

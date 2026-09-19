@@ -1284,6 +1284,10 @@
       md.topLevel.forEach(function(pair){
         var qty = pair[1] * count;
         buyItems[pair[0]] = (buyItems[pair[0]] || 0) + qty;
+        // A handful of recipes use a raw material (a crystal, most often) directly as a top-level
+        // ingredient rather than through another craft -- that's still gatherable, unlike a genuine
+        // crafted component, so it gets the same treatment as anything in the raw-materials table.
+        if(!RECIPE_TREE[pair[0]] && isFreeGathered(pair[0])) return;
         var price = priceLookup(pair[0]);
         if(price == null) missing[pair[0]] = true; else buyCost += price * qty;
       });
@@ -1652,11 +1656,15 @@
   // unit price / subtotal, for the collapsible breakdown under each job's gil summary.
   // `total` is the strategy's already-computed cost (jobGilBreakdown's buyCost/craftCost) rather
   // than re-summed from the rows here, so it always matches the summary line above it exactly.
-  // showGatherColumn adds a per-item "Gather" checkbox column (craft/leaves table only, and only
-  // while the master gather toggle is on -- with it off, isFreeGathered is always false and a column
-  // of dead checkboxes would just be noise). Checking/unchecking a row writes GATHER_ITEM_OVERRIDES
-  // (see the delegated listener below) so a player can exclude one specific material from "gather my
-  // own" without giving up the toggle for everything else.
+  // showGatherColumn adds a per-item "Gather" checkbox column, shown while the master gather toggle
+  // is on (with it off, isFreeGathered is always false and a column of dead checkboxes would just be
+  // noise). The buying/crafting-components table can include a raw material used directly (a
+  // crystal, most often) alongside genuine crafted components -- only rows for an actual raw
+  // material (no RECIPE_TREE entry of their own) get a checkbox; a crafted component has no
+  // "gather" option, so its cell is left empty rather than offering a checkbox that wouldn't apply.
+  // Checking/unchecking a row writes GATHER_ITEM_OVERRIDES (see the delegated listener below) so a
+  // player can exclude one specific material from "gather my own" without giving up the toggle for
+  // everything else.
   function renderGilBreakdownRows(itemsMap, priceLookup, world, total, isFreeGathered, showGatherColumn){
     var ids = Object.keys(itemsMap);
     if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
@@ -1664,12 +1672,13 @@
     var rows = ids.map(function(id){
       var qty = itemsMap[id];
       var price = priceLookup(id);
-      var free = !!(isFreeGathered && isFreeGathered(id));
+      var isRawMaterial = !RECIPE_TREE[id];
+      var free = isRawMaterial && !!(isFreeGathered && isFreeGathered(id));
       var subtotal = free ? 'gathered' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
       return '<tr class="gil-breakdown-row' + (free ? ' gil-breakdown-free' : '') + '">' +
-        (showGatherColumn ? '<td class="gil-gather-col"><input type="checkbox" ' +
-          'class="gil-item-gather-toggle" data-item-id="' + id + '"' + (free ? ' checked' : '') +
-          '></td>' : '') +
+        (showGatherColumn ? '<td class="gil-gather-col">' + (isRawMaterial ?
+          '<input type="checkbox" class="gil-item-gather-toggle" data-item-id="' + id + '"' +
+            (free ? ' checked' : '') + '>' : '') + '</td>' : '') +
         '<td><a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" ' +
           'rel="noopener">' + itemDisplayName(id) + '</a></td>' +
         '<td class="num">' + fmt(qty) + '&times;</td>' +
@@ -1717,7 +1726,8 @@
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/crafting components</div>' +
-            renderGilBreakdownRows(b.buyItems, priceLookup, world, b.buyCost) +
+            renderGilBreakdownRows(b.buyItems, priceLookup, world, b.buyCost, isFreeGathered,
+              gatherOwnCheckbox.checked) +
           '</div>' +
           (craftEnabled ? '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +

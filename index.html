@@ -82,11 +82,19 @@
   .gil-receipt[hidden]{ display:none; }
 
   .job-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; }
+  /* A wide-open price breakdown can't safely grow just its own card -- job-cards share grid
+     columns with siblings, and there's no reliable way to grow only that shared column without
+     risking the card overlapping its neighbor (unlike the consolidated receipt, which is alone
+     in its row). Dropping to one column instead removes that neighbor for as long as any
+     breakdown is open, so the affected card is free to grow exactly like the receipt does. */
+  .job-grid:has(.gil-details[open]){ grid-template-columns: 1fr; }
 
   .job-card{
     background: var(--paper); border:1px solid var(--line); border-radius:14px; padding:16px 18px;
     box-shadow: var(--shadow); display:flex; flex-direction:column; gap:12px; min-width:0;
   }
+  .job-card:has(.gil-details[open]){ min-width: min-content; }
+  .job-card:has(.gil-details[open]) .gil-breakdown-group{ overflow-x: visible; }
   .job-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
   .job-name{
     font-family:'Spectral', serif; font-weight:600; font-size:1.08rem;

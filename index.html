@@ -70,6 +70,12 @@
   .consolidated-bar .summary-item .val{ font-size:1.05rem; }
   .consolidated-bar[hidden]{ display:none; }
 
+  .gil-receipt{
+    background: var(--paper); border:1px solid var(--accent); border-radius:14px; padding:14px 20px;
+    box-shadow: var(--shadow);
+  }
+  .gil-receipt[hidden]{ display:none; }
+
   .job-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; }
 
   .job-card{
@@ -251,6 +257,8 @@
   <div class="summary-bar" id="summaryBar"></div>
 
   <div class="summary-bar consolidated-bar" id="gilBar" hidden></div>
+
+  <div class="gil-receipt" id="gilReceipt" hidden></div>
 
   <label class="craft-toggle craft-toggle-all">
     <input type="checkbox" id="craftAllCheckbox"> Craft my own components -- all jobs
@@ -1343,6 +1351,7 @@
   var summaryBar = document.getElementById('summaryBar');
   var consolidatedBar = document.getElementById('consolidatedBar');
   var gilBar = document.getElementById('gilBar');
+  var gilReceipt = document.getElementById('gilReceipt');
   var craftAllCheckbox = document.getElementById('craftAllCheckbox');
   var craftAllError = document.getElementById('craftAllError');
   var dcSelect = document.getElementById('dcSelect');
@@ -1599,6 +1608,8 @@
     if(!world){
       gilBar.hidden = true;
       gilBar.innerHTML = '';
+      gilReceipt.hidden = true;
+      gilReceipt.innerHTML = '';
       marketStatus.textContent = '';
       marketStatus.classList.remove('market-error');
       JOB_ORDER.forEach(function(job){
@@ -1612,6 +1623,8 @@
     if(!ids.length){
       gilBar.hidden = true;
       gilBar.innerHTML = '';
+      gilReceipt.hidden = true;
+      gilReceipt.innerHTML = '';
       return;
     }
 
@@ -1621,6 +1634,8 @@
     } else {
       gilBar.hidden = true;
       gilBar.innerHTML = '';
+      gilReceipt.hidden = true;
+      gilReceipt.innerHTML = '';
       JOB_ORDER.forEach(function(job){
         var el = cards[job].querySelector('[data-r="gil"]');
         if(el) el.innerHTML = '';
@@ -1783,6 +1798,18 @@
     var priceLookup = function(id){ var v = cache[id]; return v === undefined ? null : v; };
     var isFreeGathered = currentIsFreeGathered();
     var totalBuy = 0; var totalCraft = 0; var totalMissing = 0; var jobsShown = 0; var anyCraftEnabled = false;
+    // Every job's buyItems/craftItems/buyItemUnitCost, summed into one receipt across the whole
+    // leveling plan -- a component or raw material needed by more than one job shows up as a single
+    // row with its combined quantity instead of one row per job. buyItemUnitCost is keyed only by
+    // itemId (craftCostPerUnit never looks at which job asked), so merging it is a plain overwrite,
+    // not a sum; the one edge case this glosses over is the same component being crafted in one
+    // job's context and bought in another's (no per-job override set, differing craftEnabled) --
+    // the merged row then displays "crafted" for the whole combined quantity, though the grand
+    // total below is still exactly right since it's summed from each job's own already-correct cost.
+    var allBuyItems = {}; var allBuyItemUnitCost = {}; var allCraftItems = {};
+    function mergeQty(into, from){
+      Object.keys(from).forEach(function(id){ into[id] = (into[id] || 0) + from[id]; });
+    }
 
     JOB_ORDER.forEach(function(job){
       var s = state[job];
@@ -1794,6 +1821,9 @@
       if(craftEnabled) anyCraftEnabled = true;
       var b = jobGilBreakdown(job, s.acc, priceLookup, isFreeGathered, craftEnabled);
       totalBuy += b.buyCost; totalCraft += b.craftCost; totalMissing += b.missingCount; jobsShown++;
+      mergeQty(allBuyItems, b.buyItems);
+      mergeQty(allCraftItems, b.craftItems);
+      Object.keys(b.buyItemUnitCost).forEach(function(id){ allBuyItemUnitCost[id] = b.buyItemUnitCost[id]; });
       var savings = b.buyCost - b.craftCost;
       // Every gather/craft checkbox click re-renders this whole element (the numbers may have
       // changed), which would otherwise silently re-collapse the <details> -- a freshly-parsed one
@@ -1824,6 +1854,8 @@
     if(!jobsShown){
       gilBar.hidden = true;
       gilBar.innerHTML = '';
+      gilReceipt.hidden = true;
+      gilReceipt.innerHTML = '';
       return;
     }
 
@@ -1837,6 +1869,20 @@
         '<span class="val num">' + fmt(totalBuy - totalCraft) + ' gil</span></div>' : '') +
       (totalMissing ? '<div class="summary-item"><span class="lbl">Unpriced items</span>' +
         '<span class="val num">' + totalMissing + '</span></div>' : '');
+
+    gilReceipt.hidden = false;
+    var receiptWasOpen = gilReceipt.querySelector('.gil-details') && gilReceipt.querySelector('.gil-details').open;
+    gilReceipt.innerHTML = '<details class="gil-details"' + (receiptWasOpen ? ' open' : '') + '>' +
+        '<summary>Consolidated price breakdown, all jobs combined</summary>' +
+        '<div class="gil-breakdown-group">' +
+          '<div class="gil-breakdown-title">Buying/crafting components</div>' +
+          renderBuyBreakdownRows(allBuyItems, allBuyItemUnitCost, priceLookup, world, totalBuy) +
+        '</div>' +
+        (anyCraftEnabled ? '<div class="gil-breakdown-group">' +
+          '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +
+          renderGilBreakdownRows(allCraftItems, priceLookup, world, totalCraft, isFreeGathered, true) +
+        '</div>' : '') +
+      '</details>';
   }
 
   document.body.addEventListener('click', function(e){

@@ -154,6 +154,11 @@
   .gil-breakdown-price{ color: var(--ink-soft); flex:none; width:6em; text-align:right; }
   .gil-breakdown-subtotal{ font-weight:600; flex:none; width:7em; text-align:right; }
   .gil-breakdown-empty{ font-size:.78rem; color: var(--ink-faint); }
+  .gil-breakdown-total{ border-bottom:none; border-top:1px solid var(--line); margin-top:2px; padding-top:5px; }
+  .gil-breakdown-total-label{ flex:1 1 auto; min-width:0; font-weight:600; color: var(--ink); }
+  .gil-breakdown-total .gil-breakdown-subtotal{ font-weight:700; color: var(--accent-ink); }
+  :root:not([data-theme="light"]) .gil-breakdown-total .gil-breakdown-subtotal{ color: var(--accent); }
+  :root[data-theme="dark"] .gil-breakdown-total .gil-breakdown-subtotal{ color: var(--accent); }
 
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
@@ -1456,11 +1461,13 @@
 
   // Renders one strategy's line items (sorted by display name) as rows of name / qty / unit price /
   // subtotal, for the collapsible breakdown under each job's gil summary.
-  function renderGilBreakdownRows(itemsMap, priceLookup, world){
+  // `total` is the strategy's already-computed cost (jobGilBreakdown's buyCost/craftCost) rather
+  // than re-summed from the rows here, so it always matches the summary line above it exactly.
+  function renderGilBreakdownRows(itemsMap, priceLookup, world, total){
     var ids = Object.keys(itemsMap);
     if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
     ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
-    return ids.map(function(id){
+    var rows = ids.map(function(id){
       var qty = itemsMap[id];
       var price = priceLookup(id);
       var subtotal = price != null ? fmt(price * qty) + ' gil' : 'unpriced';
@@ -1472,6 +1479,12 @@
         '<span class="gil-breakdown-subtotal num">' + subtotal + '</span>' +
         '</div>';
     }).join('');
+    return rows + '<div class="gil-breakdown-row gil-breakdown-total">' +
+      '<span class="gil-breakdown-total-label">Total</span>' +
+      '<span class="gil-breakdown-qty num"></span>' +
+      '<span class="gil-breakdown-price num"></span>' +
+      '<span class="gil-breakdown-subtotal num">' + fmt(total) + ' gil</span>' +
+      '</div>';
   }
 
   function renderGilResults(state, cards, world, cache){
@@ -1498,11 +1511,11 @@
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying components</div>' +
-            renderGilBreakdownRows(b.buyItems, priceLookup, world) +
+            renderGilBreakdownRows(b.buyItems, priceLookup, world, b.buyCost) +
           '</div>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
-            renderGilBreakdownRows(b.craftItems, priceLookup, world) +
+            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost) +
           '</div>' +
         '</details>';
     });

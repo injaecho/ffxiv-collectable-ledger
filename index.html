@@ -167,6 +167,8 @@
   :root:not([data-theme="light"]) .gil-breakdown-table tfoot td.num{ color: var(--accent); }
   :root[data-theme="dark"] .gil-breakdown-table tfoot td.num{ color: var(--accent); }
   .gil-breakdown-row.gil-breakdown-free td.num:last-child{ color: var(--teal); font-style:italic; }
+  .gil-gather-col{ width:2.4em; text-align:center !important; }
+  .gil-gather-col input{ cursor:pointer; }
 
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
@@ -1283,15 +1285,25 @@
   var gatherFishCheckbox = document.getElementById('gatherFishCheckbox');
   var gatherOtherCheckbox = document.getElementById('gatherOtherCheckbox');
 
+  // Per-item exceptions to the category defaults below -- a player who's turned gathering on
+  // overall but doesn't want to bother with one specific material (a bad node location, a material
+  // they already have a stack of, whatever) can untick just that row in the breakdown table. Keyed
+  // by itemId as a string (object keys always are), holding an explicit true/false that overrides
+  // whatever the category/sub-toggle combination would otherwise say; only touched once a player
+  // actually unticks/reticks a row, so most items never get an entry here at all.
+  var GATHER_ITEM_OVERRIDES = {};
+
   // Builds the current isFreeGathered(itemId) predicate from the gather toggles' live checked
   // state. "gather" (regular Miner/Botanist nodes) is always free once the master toggle is on --
-  // the sub-toggles only ever ADD more categories on top of that default, never remove it.
+  // the sub-toggles only ever ADD more categories on top of that default, never remove it -- unless
+  // a per-item override says otherwise.
   function currentIsFreeGathered(){
     if(!gatherOwnCheckbox.checked) return function(){ return false; };
     var includeTimed = gatherTimedCheckbox.checked;
     var includeFish = gatherFishCheckbox.checked;
     var includeOther = gatherOtherCheckbox.checked;
     return function(itemId){
+      if(itemId in GATHER_ITEM_OVERRIDES) return GATHER_ITEM_OVERRIDES[itemId];
       var source = RAW_MATERIAL_SOURCE[itemId] || 'other';
       if(source === 'gather') return true;
       if(source === 'timed') return includeTimed;
@@ -1558,7 +1570,12 @@
   // unit price / subtotal, for the collapsible breakdown under each job's gil summary.
   // `total` is the strategy's already-computed cost (jobGilBreakdown's buyCost/craftCost) rather
   // than re-summed from the rows here, so it always matches the summary line above it exactly.
-  function renderGilBreakdownRows(itemsMap, priceLookup, world, total, isFreeGathered){
+  // showGatherColumn adds a per-item "Gather" checkbox column (craft/leaves table only, and only
+  // while the master gather toggle is on -- with it off, isFreeGathered is always false and a column
+  // of dead checkboxes would just be noise). Checking/unchecking a row writes GATHER_ITEM_OVERRIDES
+  // (see the delegated listener below) so a player can exclude one specific material from "gather my
+  // own" without giving up the toggle for everything else.
+  function renderGilBreakdownRows(itemsMap, priceLookup, world, total, isFreeGathered, showGatherColumn){
     var ids = Object.keys(itemsMap);
     if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
     ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
@@ -1568,6 +1585,9 @@
       var free = !!(isFreeGathered && isFreeGathered(id));
       var subtotal = free ? 'gathered' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
       return '<tr class="gil-breakdown-row' + (free ? ' gil-breakdown-free' : '') + '">' +
+        (showGatherColumn ? '<td class="gil-gather-col"><input type="checkbox" ' +
+          'class="gil-item-gather-toggle" data-item-id="' + id + '"' + (free ? ' checked' : '') +
+          '></td>' : '') +
         '<td><a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" ' +
           'rel="noopener">' + itemDisplayName(id) + '</a></td>' +
         '<td class="num">' + fmt(qty) + '&times;</td>' +
@@ -1575,11 +1595,14 @@
         '<td class="num">' + subtotal + '</td>' +
         '</tr>';
     }).join('');
+    var colspan = showGatherColumn ? 4 : 3;
     return '<table class="gil-breakdown-table">' +
-      '<thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th>' +
+      '<thead><tr>' + (showGatherColumn ? '<th class="gil-gather-col">Gather</th>' : '') +
+        '<th>Item</th><th class="num">Qty</th><th class="num">Price</th>' +
         '<th class="num">Subtotal</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr><td colspan="3">Total</td><td class="num">' + fmt(total) + ' gil</td></tr></tfoot>' +
+      '<tfoot><tr><td colspan="' + colspan + '">Total</td><td class="num">' + fmt(total) +
+        ' gil</td></tr></tfoot>' +
       '</table>';
   }
 
@@ -1612,7 +1635,8 @@
           '</div>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
-            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered) +
+            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered,
+              gatherOwnCheckbox.checked) +
           '</div>' +
         '</details>';
     });
@@ -1767,6 +1791,22 @@
     }
   }
 
+  var GATHER_OVERRIDES_STORAGE_KEY = 'ffxiv-collectable-ledger-gather-overrides-v1';
+  function saveGatherOverridesToLocalStorage(){
+    try{ localStorage.setItem(GATHER_OVERRIDES_STORAGE_KEY, JSON.stringify(GATHER_ITEM_OVERRIDES)); }
+    catch(e){ console.warn('Could not save your per-item gathering exceptions to this browser:', e); }
+  }
+  function loadGatherOverridesFromLocalStorage(){
+    try{
+      var raw = localStorage.getItem(GATHER_OVERRIDES_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      console.warn('Could not load your saved per-item gathering exceptions (corrupted or blocked ' +
+        'storage):', e);
+      return {};
+    }
+  }
+
   // Universalis's DC/world lists are metadata, not per-item prices -- fetched once on load, not
   // per keystroke, so unlike the old free-text field there's no debounce to worry about here: a
   // <select> fires one change event per pick, not a stream of keystrokes, so each pick just
@@ -1891,6 +1931,19 @@
     }
     updateGatherSubTogglesVisibility();
   })();
+  GATHER_ITEM_OVERRIDES = loadGatherOverridesFromLocalStorage();
+
+  // Delegated because the breakdown table (and every checkbox in it) is fully rebuilt by every
+  // recalcAll -- a listener bound to a specific checkbox would be destroyed along with it. Attached
+  // to body (below jobGrid's own delegated input listener in the bubble path) so its recalcAll()
+  // always runs after GATHER_ITEM_OVERRIDES has been updated, not before.
+  document.body.addEventListener('input', function(e){
+    var cb = e.target.closest('.gil-item-gather-toggle');
+    if(!cb) return;
+    GATHER_ITEM_OVERRIDES[cb.dataset.itemId] = cb.checked;
+    recalcAll();
+    saveGatherOverridesToLocalStorage();
+  });
 
   loadWorldReferenceData();
   boot(loadFromLocalStorage());

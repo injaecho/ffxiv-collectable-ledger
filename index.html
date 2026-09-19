@@ -154,7 +154,7 @@
 
   <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
 
-  <p class="hint">Below level 81, it's more efficient to do Ishgardian Restoration (levels 21-80), and Logs before then. This tool assumes 100% quality (+300% bonus EXP) and no external buffs like rested EXP or food.</p>
+  <p class="hint">Below level 71, class quests (1-15) and Cosmic Exploration (15-70) are how you level -- collectables aren't available yet. Cosmic Exploration needs Endwalker's MSQ finished first; if you haven't, Ishgardian Restoration covers that same 15-80ish stretch instead. From 71 onward, Cosmic Exploration (or Ishgardian Restoration) is still an option, but this tool models the collectable route. It assumes 100% quality (+300% bonus EXP) and no external buffs like rested EXP or food.</p>
 
   <footer>
 Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a list.
@@ -171,36 +171,46 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
     3153000,3324000,3532000,3770600,4066000,4377000,4777000,5256000,5992000,6171000,6942000,7205000,7948000,8287000,9231000,
     9529000,10459000,10838000,13278000,13659000,15348000,15912000,17534000,18263000,20322000,20957000,22979000,23789000,29023000];
 
-  // Real Lv 81-100 "Rarefied" collectable EXP at max collectability, from FFXIV Teamcraft's live
+  // Real Lv 71-100 "Rarefied" collectable EXP at max collectability, from FFXIV Teamcraft's live
   // collectables data. Confirmed identical across all 8 DoH jobs at a given level -- only the item
-  // name differs per job. Each item is also craftable (and turn-in-able) one level early.
-  var EXP_BY_LEVEL = {81:1055241, 83:1232055, 85:1417077, 87:1629459, 89:1853298, 90:2270538,
+  // name differs per job. Each item is also craftable (and turn-in-able) one level early. No
+  // collectable exists below level 71 (Cosmic Exploration and class quests cover levels 1-70).
+  var EXP_BY_LEVEL = {72:539163, 74:603972, 76:695286, 78:816867, 80:1024632,
+    81:1055241, 83:1232055, 85:1417077, 87:1629459, 89:1853298, 90:2270538,
     91:2335689, 93:2720952, 95:3122973, 97:3583647, 99:4067919, 100:4962933};
-  var LEVELS_ASC = [81,83,85,87,89,90,91,93,95,97,99,100];
+  var LEVELS_ASC = [72,74,76,78,80,81,83,85,87,89,90,91,93,95,97,99,100];
 
   var CLASS_ITEMS = {
-    Carpenter: {81:"Horse Chestnut Kasa", 83:"Palm Bracelet", 85:"Red Pine Spinning Wheel", 87:"Ironwood Grinding Wheel",
+    Carpenter: {72:"White Oak Partisan", 74:"Applewood Staff", 76:"White Ash Earrings", 78:"Sandteak Fauchard", 80:"Lignum Vitae Grinding Wheel",
+      81:"Horse Chestnut Kasa", 83:"Palm Bracelet", 85:"Red Pine Spinning Wheel", 87:"Ironwood Grinding Wheel",
       89:"Integral Armillae", 90:"Integral Fishing Rod", 91:"Ginseng Earrings", 93:"Ceiba Spear",
       95:"Dark Mahogany Necklace", 97:"Acacia Rod", 99:"Claro Walnut Grinding Wheel", 100:"Claro Walnut Fishing Rod"},
-    Blacksmith: {81:"High Durium Pistol", 83:"High Durium Greatsword", 85:"Bismuth Sledgehammer", 87:"Manganese Cross-pein Hammer",
+    Blacksmith: {72:"Deepgold Anelace", 74:"Deepgold Culinary Knife", 76:"Bluespirit Gunblade", 78:"Titanbronze Pickaxe", 80:"Mythril Hatchet",
+      81:"High Durium Pistol", 83:"High Durium Greatsword", 85:"Bismuth Sledgehammer", 87:"Manganese Cross-pein Hammer",
       89:"Chondrite Culinary Knife", 90:"Chondrite Lapidary Hammer", 91:"Mountain Chromite Fists", 93:"Ruthenium War Axe",
       95:"Cobalt Tungsten Scimitars", 97:"Titanium Gold Mortar", 99:"Ra'Kaznar War Scythe", 100:"Ra'Kaznar Round Knife"},
-    Armorer: {81:"High Durium Knuckles", 83:"High Durium Kite Shield", 85:"Bismuth Fat Cat Frypan", 87:"Manganese Armor of the Behemoth King",
+    Armorer: {72:"Deepgold Cuirass", 74:"Deepgold Wings", 76:"Bluespirit Gauntlets", 78:"Titanbronze Tower Shield", 80:"Mythril Alembic",
+      81:"High Durium Knuckles", 83:"High Durium Kite Shield", 85:"Bismuth Fat Cat Frypan", 87:"Manganese Armor of the Behemoth King",
       89:"Chondrite Sollerets", 90:"Chondrite Alembic", 91:"Mountain Chromite Alembic", 93:"Ruthenium Sabatons",
       95:"Cobalt Tungsten Chocobo Frypan", 97:"Titanium Gold Thorned Corselet", 99:"Ra'Kaznar Greaves", 100:"Ra'Kaznar Ring"},
-    Goldsmith: {81:"High Durium Milpreves", 83:"Pewter Choker", 85:"Phrygian Earring", 87:"Manganese Horn of the Last Unicorn",
+    Goldsmith: {72:"Stonegold Degen", 74:"Stonegold Orrery", 76:"Manasilver Ear Cuffs", 78:"Titanbronze Headgear", 80:"Mythril Ring",
+      81:"High Durium Milpreves", 83:"Pewter Choker", 85:"Phrygian Earring", 87:"Manganese Horn of the Last Unicorn",
       89:"Star Quartz Choker", 90:"Chondrite Needle", 91:"Lar Longbow", 93:"Ihuykanite Circlet",
       95:"Cobalt Tungsten Tuck", 97:"White Gold Choker", 99:"Ra'Kaznar Orrery", 100:"Black Star Earrings"},
-    Leatherworker: {81:"Gajaskin Shoes", 83:"Luncheon Toadskin Hose", 85:"Saigaskin Gloves", 87:"Kumbhiraskin Shoes",
+    Leatherworker: {72:"Smilodonskin Trousers", 74:"Gliderskin Thighboots", 76:"Atrociraptorskin Cap", 78:"Zonureskin Fingerless Gloves", 80:"Swallowskin Coat",
+      81:"Gajaskin Shoes", 83:"Luncheon Toadskin Hose", 85:"Saigaskin Gloves", 87:"Kumbhiraskin Shoes",
       89:"Ophiotauroskin Top", 90:"Ophiotauroskin Halfgloves", 91:"Loboskin Fingerless Gloves", 93:"Crocodileskin Leggings",
       95:"Br'aaxskin Armlets", 97:"Gomphotherium Brais", 99:"Gargantuaskin Trousers", 100:"Gargantuaskin Hat"},
-    Weaver: {81:"Darkhempen Hat", 83:"Almasty Serge Gloves", 85:"Snow Linen Doublet", 87:"Scarlet Moko Wedge Cap",
+    Weaver: {72:"Brightlinen Himation", 74:"Iridescent Top", 76:"Pixie Cotton Hood", 78:"Ovim Wool Tunic", 80:"Dwarven Cotton Beret",
+      81:"Darkhempen Hat", 83:"Almasty Serge Gloves", 85:"Snow Linen Doublet", 87:"Scarlet Moko Wedge Cap",
       89:"AR-Caean Velvet Bottoms", 90:"AR-Caean Velvet Work Cap", 91:"Snow Cotton Beret", 93:"Mountain Linen Top",
       95:"Sarcenet Kecks", 97:"Rroneek Serge Hat", 99:"Thunderyards Silk Gloves", 100:"Thunderyards Silk Culottes"},
-    Alchemist: {81:"Gajaskin Codex", 83:"Luncheon Toadskin Grimoire", 85:"Moon Gel", 87:"Enchanted Manganese Ink",
+    Alchemist: {72:"Alkahest", 74:"Gliderskin Grimoire", 76:"Bluespirit Codex", 78:"Syrup", 80:"Dwarven Mythril Grimoire",
+      81:"Gajaskin Codex", 83:"Luncheon Toadskin Grimoire", 85:"Moon Gel", 87:"Enchanted Manganese Ink",
       89:"Draught", 90:"Ophiotauroskin Magitek Codex", 91:"Loboskin Grimoire", 93:"Gemsap of Dexterity",
       95:"Br'aaxskin Codex", 97:"Cunning Craftsman's Tisane", 99:"Gemdraught of Vitality", 100:"Claro Walnut Flat Brush"},
-    Culinarian: {81:"Archon Loaf", 83:"King Crab Cake", 85:"Happiness Juice", 87:"Giant Haddock Dip",
+    Culinarian: {72:"Grilled Rail", 74:"Spaghetti al Nero", 76:"Popotoes au Gratin", 78:"Espresso con Panna", 80:"Lemonade",
+      81:"Archon Loaf", 83:"King Crab Cake", 85:"Happiness Juice", 87:"Giant Haddock Dip",
       89:"Giant Popoto Pancakes", 90:"Sykon Bavarois", 91:"Boiled Alpaca Steak", 93:"Banana Ponzecake",
       95:"Turali Pineapple Ponzecake", 97:"Salmon Jerky", 99:"Stuffed Peppers", 100:"Tacos de Carne Asada"}
   };
@@ -208,14 +218,22 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
 
   // Game item IDs for each Rarefied collectable (same IDs Garland Tools and Teamcraft both use).
   var ITEM_IDS = {
-    Carpenter: {81:35626,83:35627,85:35628,87:35629,89:35630,90:36619,91:44185,93:44186,95:44187,97:44188,99:44189,100:44190},
-    Blacksmith: {81:35631,83:35632,85:35633,87:35634,89:35635,90:36620,91:44191,93:44192,95:44193,97:44194,99:44195,100:44196},
-    Armorer: {81:35636,83:35637,85:35638,87:35639,89:35640,90:36621,91:44197,93:44198,95:44199,97:44200,99:44201,100:44202},
-    Goldsmith: {81:35641,83:35642,85:35643,87:35644,89:35645,90:36622,91:44203,93:44204,95:44205,97:44206,99:44207,100:44208},
-    Leatherworker: {81:35646,83:35647,85:35648,87:35649,89:35650,90:36623,91:44209,93:44210,95:44211,97:44212,99:44213,100:44214},
-    Weaver: {81:35651,83:35652,85:35653,87:35654,89:35655,90:36624,91:44215,93:44216,95:44217,97:44218,99:44219,100:44220},
-    Alchemist: {81:35656,83:35657,85:35658,87:35659,89:35660,90:36625,91:44221,93:44222,95:44223,97:44224,99:44225,100:44226},
-    Culinarian: {81:35661,83:35662,85:35663,87:35664,89:35665,90:36626,91:44227,93:44228,95:44229,97:44230,99:44231,100:44232}
+    Carpenter: {72:30981,74:30982,76:30983,78:30984,80:31652,
+      81:35626,83:35627,85:35628,87:35629,89:35630,90:36619,91:44185,93:44186,95:44187,97:44188,99:44189,100:44190},
+    Blacksmith: {72:30996,74:30997,76:30998,78:30999,80:31653,
+      81:35631,83:35632,85:35633,87:35634,89:35635,90:36620,91:44191,93:44192,95:44193,97:44194,99:44195,100:44196},
+    Armorer: {72:31011,74:31012,76:31013,78:31014,80:31654,
+      81:35636,83:35637,85:35638,87:35639,89:35640,90:36621,91:44197,93:44198,95:44199,97:44200,99:44201,100:44202},
+    Goldsmith: {72:31026,74:31027,76:31028,78:31029,80:31655,
+      81:35641,83:35642,85:35643,87:35644,89:35645,90:36622,91:44203,93:44204,95:44205,97:44206,99:44207,100:44208},
+    Leatherworker: {72:31041,74:31042,76:31043,78:31044,80:31656,
+      81:35646,83:35647,85:35648,87:35649,89:35650,90:36623,91:44209,93:44210,95:44211,97:44212,99:44213,100:44214},
+    Weaver: {72:31056,74:31057,76:31058,78:31059,80:31657,
+      81:35651,83:35652,85:35653,87:35654,89:35655,90:36624,91:44215,93:44216,95:44217,97:44218,99:44219,100:44220},
+    Alchemist: {72:31071,74:31072,76:31073,78:31074,80:31658,
+      81:35656,83:35657,85:35658,87:35659,89:35660,90:36625,91:44221,93:44222,95:44223,97:44224,99:44225,100:44226},
+    Culinarian: {72:31086,74:31087,76:31088,78:31089,80:31659,
+      81:35661,83:35662,85:35663,87:35664,89:35665,90:36626,91:44227,93:44228,95:44229,97:44230,99:44231,100:44232}
   };
 
   function itemIdForLabel(job, label){
@@ -254,7 +272,8 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
   // spreadsheet (in-game screenshots + tests) and cross-checked against a real reported value:
   // a level-81 recipe at 0 level difference and +350% (300% max-quality + 50% rested, per the
   // source data) comes out to ~209,326 EXP, matching a real observed 209,321.
-  var RECIPE_BASE_EXP = {81:139553, 83:157261, 85:182593, 87:208955, 89:230926, 90:239004,
+  var RECIPE_BASE_EXP = {72:70074, 74:77865, 76:89211, 78:103551, 80:134820,
+    81:139553, 83:157261, 85:182593, 87:208955, 89:230926, 90:239004,
     91:305279, 93:350860, 95:397220, 97:449528, 99:499569, 100:522414};
   var EXP_LEVEL_MOD = [100,96,92,88,84,80,75,70,65,60,55,45,35,25,20,18,16,15,14,13,12,10]; // index = level difference 0-21
 
@@ -284,7 +303,7 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
   }
 
   // Simulates turn-in by turn-in from (level, exp) to the target level, carrying leftover EXP
-  // forward and switching to a better-paying collectable the instant it unlocks. Levels below 81
+  // forward and switching to a better-paying collectable the instant it unlocks. Levels below 71
   // have no collectable yet, so that stretch is tallied separately as plain EXP. Each turn-in also
   // earns craft-completion EXP for the craft itself (at 100% quality, no external buffs), on top
   // of the appraiser's collectability reward -- computed from the current job level at the moment
@@ -394,8 +413,8 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
       '</div>';
     }
     if(result.preExp > 0){
-      html += '<div class="job-note">Ishgardian Restoration (levels 21-80) is the recommended way to earn the roughly <b class="num">' +
-        fmt(result.preExp) + '</b> EXP needed to get there, then switch to collectable turn-ins below.</div>';
+      html += '<div class="job-note">Class quests (1-15) and Cosmic Exploration (15-70, or Ishgardian Restoration if Endwalker\'s MSQ isn\'t done yet) are the way to earn the roughly <b class="num">' +
+        fmt(result.preExp) + '</b> EXP needed to get to level 71, where collectable turn-ins below become available.</div>';
     }
     html += '<div class="job-breakdown">';
     result.order.forEach(function(label){

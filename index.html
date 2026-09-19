@@ -125,6 +125,12 @@
   .market-status{ font-size:.78rem; color: var(--ink-faint); }
   .market-status.market-error{ color: var(--rust); }
 
+  .gather-row{ display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+  .gather-sub-toggles{
+    display:flex; gap:14px; flex-wrap:wrap; background: var(--paper); border:1px solid var(--line);
+    border-radius:10px; padding:9px 14px; box-shadow: var(--shadow);
+  }
+
   .gil-row{ display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; color: var(--ink-soft); }
   .gil-item b{ font-family:'IBM Plex Mono', monospace; color: var(--ink); font-weight:600; }
   .gil-item.gil-savings b{ color: var(--accent-ink); }
@@ -159,6 +165,7 @@
   .gil-breakdown-total .gil-breakdown-subtotal{ font-weight:700; color: var(--accent-ink); }
   :root:not([data-theme="light"]) .gil-breakdown-total .gil-breakdown-subtotal{ color: var(--accent); }
   :root[data-theme="dark"] .gil-breakdown-total .gil-breakdown-subtotal{ color: var(--accent); }
+  .gil-breakdown-row.gil-breakdown-free .gil-breakdown-subtotal{ color: var(--teal); font-style:italic; }
 
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
@@ -249,6 +256,18 @@
     <span class="market-status" id="marketStatus"></span>
   </div>
 
+  <div class="gather-row">
+    <label class="craft-toggle craft-toggle-all">
+      <input type="checkbox" id="gatherOwnCheckbox"> Gather my own raw materials
+    </label>
+    <div class="gather-sub-toggles" id="gatherSubToggles" hidden>
+      <label class="craft-toggle"><input type="checkbox" id="gatherTimedCheckbox"> Include timed nodes</label>
+      <label class="craft-toggle"><input type="checkbox" id="gatherFishCheckbox"> Include fishing</label>
+      <label class="craft-toggle">
+        <input type="checkbox" id="gatherOtherCheckbox"> Include dungeon drops / GC items</label>
+    </div>
+  </div>
+
   <div class="job-grid" id="jobGrid"></div>
 
   <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
@@ -270,6 +289,9 @@
     estimate gil cost for each job's turn-ins: buying every recipe ingredient as-is versus crafting
     all the way down to raw materials yourself. Each item is priced at its cheapest current NQ
     listing on that world -- a snapshot, not a guarantee that listing is still there when you shop.
+    "Gather my own raw materials" treats regular Miner/Botanist nodes as free instead of priced in
+    that "crafting your own" total; timed (ephemeral/unspoiled/legendary) nodes, fishing, and
+    dungeon-drop/GC-exchange materials stay priced unless their own toggle is switched on too.
   </p>
 
   <footer>
@@ -655,6 +677,50 @@
     44230:{job:"CUL",level:97,n:1,i:[[43972,2],[43753,1],[43977,2],[44034,2],[8,8],[13,8]]},
     44231:{job:"CUL",level:99,n:1,i:[[43976,1],[43973,2],[44063,1],[43984,3],[8,8],[13,8]]},
     44232:{job:"CUL",level:100,n:1,i:[[44106,2],[36077,2],[43986,1],[43985,2],[8,8],[13,8]]}
+  };
+
+  // How each base material at the bottom of the ingredient tree (RECIPE_TREE's leaves -- see
+  // materialDemandFor) is actually obtained, for the "gather my own raw materials" toggle: "gather"
+  // is a regular always-up Miner/Botanist node; "timed" is a Miner/Botanist node that's ONLY ever
+  // ephemeral/unspoiled/legendary (an item with both a regular and a timed node is "gather", since
+  // you're never forced to wait for the timed one); "fish" covers both angling and spearfishing;
+  // "other" is everything else (monster drops, GC seal exchange, vendor purchase, quest reward),
+  // matching how TeamCraft's own source categories fall outside gathering/fishing. Crawled once
+  // from Garland Tools' item data (garlandtools.org/db/doc/item) since it's the only source found
+  // that actually flags ephemeral/unspoiled/legendary nodes -- XIVAPI's GatheringPointBase.IsLimited
+  // field, which looks purpose-built for this, is unpopulated (always null) across every expansion.
+  // An item with no entry here (should not happen for anything RECIPE_TREE actually demands) falls
+  // back to "other", the conservative choice: still priced from the market unless a user explicitly
+  // opts in to treating dungeon-drop/GC items as gatherable too.
+  var RAW_MATERIAL_SOURCE = {
+    2:"gather",4:"gather",8:"gather",9:"gather",10:"gather",11:"gather",12:"gather",13:"gather",4753:"other",
+    4828:"gather",4829:"gather",4834:"gather",4838:"gather",4935:"fish",5106:"gather",5107:"gather",5110:"gather",
+    5111:"gather",5113:"gather",5115:"gather",5116:"gather",5118:"timed",5232:"gather",5263:"gather",
+    5346:"gather",5350:"timed",5360:"gather",5491:"gather",5551:"other",6149:"other",12531:"gather",
+    12532:"gather",12534:"gather",12537:"gather",12554:"gather",12597:"gather",12598:"gather",12631:"gather",
+    12878:"gather",12880:"gather",12888:"other",12891:"gather",12901:"timed",19853:"gather",19872:"gather",
+    19878:"other",19907:"timed",19913:"gather",19952:"gather",19953:"gather",19957:"gather",19973:"timed",
+    19989:"gather",27457:"fish",27683:"gather",27684:"gather",27685:"gather",27686:"gather",27687:"gather",
+    27696:"gather",27697:"gather",27698:"gather",27699:"gather",27700:"gather",27701:"gather",27702:"gather",
+    27703:"gather",27732:"other",27733:"other",27734:"other",27735:"other",27736:"other",27747:"gather",
+    27750:"gather",27753:"gather",27756:"other",27759:"gather",27763:"other",27764:"other",27773:"other",
+    27774:"other",27776:"gather",27782:"gather",27785:"gather",27799:"other",27801:"gather",27803:"gather",
+    27817:"gather",27818:"gather",27820:"gather",27821:"gather",27822:"timed",27824:"gather",27825:"gather",
+    27827:"gather",27828:"timed",27832:"gather",27834:"gather",27835:"timed",27837:"gather",27850:"other",
+    27851:"other",27968:"gather",36083:"gather",36085:"gather",36086:"gather",36088:"gather",36089:"gather",
+    36090:"gather",36095:"gather",36096:"gather",36162:"gather",36163:"gather",36164:"gather",36165:"gather",
+    36166:"gather",36174:"gather",36175:"gather",36176:"gather",36177:"gather",36178:"gather",36180:"gather",
+    36181:"gather",36190:"gather",36191:"gather",36192:"gather",36193:"gather",36194:"gather",36202:"gather",
+    36203:"other",36204:"gather",36205:"gather",36206:"gather",36241:"gather",36242:"other",36243:"other",
+    36244:"other",36245:"other",36246:"other",36255:"other",36256:"other",36257:"other",36258:"other",
+    36260:"other",36261:"other",36263:"gather",36386:"fish",36523:"fish",36569:"fish",43753:"fish",
+    43978:"gather",43979:"gather",43980:"gather",43981:"gather",43982:"gather",43984:"gather",43985:"gather",
+    43986:"gather",43988:"gather",43990:"gather",43992:"gather",43993:"gather",43994:"gather",43995:"gather",
+    43996:"gather",44002:"gather",44003:"gather",44004:"gather",44005:"gather",44006:"gather",44007:"gather",
+    44014:"gather",44015:"gather",44016:"gather",44017:"gather",44018:"gather",44024:"gather",44025:"gather",
+    44026:"gather",44027:"other",44028:"gather",44034:"gather",44040:"gather",44041:"gather",44043:"gather",
+    44052:"gather",44053:"other",44054:"other",44055:"other",44056:"other",44057:"other",44063:"other",
+    44067:"other",44069:"other",44070:"other",44071:"other",44072:"other",44106:"other"
   };
 
   // Label->level lookup is static per job (built from CLASS_ITEMS/LEVELS_ASC, neither of which
@@ -1172,7 +1238,12 @@
   // whatever prices priceLookup currently has cached. Items priceLookup can't answer for (no
   // current NQ listing on that world/DC, or not yet fetched) are counted as missing rather than
   // silently priced at 0, so the UI can flag an estimate as incomplete instead of understating it.
-  function jobGilBreakdown(job, acc, priceLookup){
+  // isFreeGathered(itemId) only applies to the "crafting your own" side (md.leaves) -- the
+  // "buying components" side never touches raw materials at all, since a top-level ingredient is by
+  // definition already a crafted/bought item, not something you'd gather. A gathered-free item still
+  // counts toward craftItems (so it still shows in the breakdown, just at 0 gil) and never counts as
+  // "missing" even if its price is unknown, since we're not going to price it either way.
+  function jobGilBreakdown(job, acc, priceLookup, isFreeGathered){
     var buyCost = 0; var craftCost = 0; var missing = {};
     var buyItems = {}; var craftItems = {}; // { [itemId]: total qty needed }, for the breakdown UI
     acc.order.forEach(function(label){
@@ -1188,6 +1259,7 @@
       Object.keys(md.leaves).forEach(function(id){
         var qty = md.leaves[id] * count;
         craftItems[id] = (craftItems[id] || 0) + qty;
+        if(isFreeGathered(id)) return;
         var price = priceLookup(id);
         if(price == null) missing[id] = true; else craftCost += price * qty;
       });
@@ -1204,6 +1276,28 @@
   var dcSelect = document.getElementById('dcSelect');
   var worldSelect = document.getElementById('worldSelect');
   var marketStatus = document.getElementById('marketStatus');
+  var gatherOwnCheckbox = document.getElementById('gatherOwnCheckbox');
+  var gatherSubToggles = document.getElementById('gatherSubToggles');
+  var gatherTimedCheckbox = document.getElementById('gatherTimedCheckbox');
+  var gatherFishCheckbox = document.getElementById('gatherFishCheckbox');
+  var gatherOtherCheckbox = document.getElementById('gatherOtherCheckbox');
+
+  // Builds the current isFreeGathered(itemId) predicate from the gather toggles' live checked
+  // state. "gather" (regular Miner/Botanist nodes) is always free once the master toggle is on --
+  // the sub-toggles only ever ADD more categories on top of that default, never remove it.
+  function currentIsFreeGathered(){
+    if(!gatherOwnCheckbox.checked) return function(){ return false; };
+    var includeTimed = gatherTimedCheckbox.checked;
+    var includeFish = gatherFishCheckbox.checked;
+    var includeOther = gatherOtherCheckbox.checked;
+    return function(itemId){
+      var source = RAW_MATERIAL_SOURCE[itemId] || 'other';
+      if(source === 'gather') return true;
+      if(source === 'timed') return includeTimed;
+      if(source === 'fish') return includeFish;
+      return includeOther;
+    };
+  }
 
   JOB_ORDER.forEach(function(job){
     var card = document.createElement('div');
@@ -1463,15 +1557,16 @@
   // subtotal, for the collapsible breakdown under each job's gil summary.
   // `total` is the strategy's already-computed cost (jobGilBreakdown's buyCost/craftCost) rather
   // than re-summed from the rows here, so it always matches the summary line above it exactly.
-  function renderGilBreakdownRows(itemsMap, priceLookup, world, total){
+  function renderGilBreakdownRows(itemsMap, priceLookup, world, total, isFreeGathered){
     var ids = Object.keys(itemsMap);
     if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
     ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
     var rows = ids.map(function(id){
       var qty = itemsMap[id];
       var price = priceLookup(id);
-      var subtotal = price != null ? fmt(price * qty) + ' gil' : 'unpriced';
-      return '<div class="gil-breakdown-row">' +
+      var free = !!(isFreeGathered && isFreeGathered(id));
+      var subtotal = free ? 'gathered' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
+      return '<div class="gil-breakdown-row' + (free ? ' gil-breakdown-free' : '') + '">' +
         '<a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" rel="noopener">' +
           itemDisplayName(id) + '</a>' +
         '<span class="gil-breakdown-qty num">' + fmt(qty) + '&times;</span>' +
@@ -1489,6 +1584,7 @@
 
   function renderGilResults(state, cards, world, cache){
     var priceLookup = function(id){ var v = cache[id]; return v === undefined ? null : v; };
+    var isFreeGathered = currentIsFreeGathered();
     var totalBuy = 0; var totalCraft = 0; var totalMissing = 0; var jobsShown = 0;
 
     JOB_ORDER.forEach(function(job){
@@ -1497,7 +1593,7 @@
       if(!el) return;
       if(!s || s.startedDone || s.acc.totalTurnins === 0){ el.innerHTML = ''; return; }
 
-      var b = jobGilBreakdown(job, s.acc, priceLookup);
+      var b = jobGilBreakdown(job, s.acc, priceLookup, isFreeGathered);
       totalBuy += b.buyCost; totalCraft += b.craftCost; totalMissing += b.missingCount; jobsShown++;
       var savings = b.buyCost - b.craftCost;
       el.innerHTML = '<div class="gil-row">' +
@@ -1515,7 +1611,7 @@
           '</div>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
-            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost) +
+            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered) +
           '</div>' +
         '</details>';
     });
@@ -1647,6 +1743,25 @@
     }
   }
 
+  var GATHER_STORAGE_KEY = 'ffxiv-collectable-ledger-gather-v1';
+  function saveGatherSettingsToLocalStorage(){
+    try{
+      localStorage.setItem(GATHER_STORAGE_KEY, JSON.stringify({
+        gather: gatherOwnCheckbox.checked, timed: gatherTimedCheckbox.checked,
+        fish: gatherFishCheckbox.checked, other: gatherOtherCheckbox.checked
+      }));
+    }catch(e){ console.warn('Could not save your gathering settings to this browser:', e); }
+  }
+  function loadGatherSettingsFromLocalStorage(){
+    try{
+      var raw = localStorage.getItem(GATHER_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){
+      console.warn('Could not load your saved gathering settings (corrupted or blocked storage):', e);
+      return null;
+    }
+  }
+
   // Universalis's DC/world lists are metadata, not per-item prices -- fetched once on load, not
   // per keystroke, so unlike the old free-text field there's no debounce to worry about here: a
   // <select> fires one change event per pick, not a stream of keystrokes, so each pick just
@@ -1738,6 +1853,27 @@
     recalcAll();
     saveWorldToLocalStorage();
   });
+
+  function updateGatherSubTogglesVisibility(){
+    gatherSubToggles.hidden = !gatherOwnCheckbox.checked;
+  }
+  [gatherOwnCheckbox, gatherTimedCheckbox, gatherFishCheckbox, gatherOtherCheckbox].forEach(function(cb){
+    cb.addEventListener('input', function(){
+      updateGatherSubTogglesVisibility();
+      recalcAll();
+      saveGatherSettingsToLocalStorage();
+    });
+  });
+  (function restoreGatherSettings(){
+    var saved = loadGatherSettingsFromLocalStorage();
+    if(saved){
+      gatherOwnCheckbox.checked = !!saved.gather;
+      gatherTimedCheckbox.checked = !!saved.timed;
+      gatherFishCheckbox.checked = !!saved.fish;
+      gatherOtherCheckbox.checked = !!saved.other;
+    }
+    updateGatherSubTogglesVisibility();
+  })();
 
   loadWorldReferenceData();
   boot(loadFromLocalStorage());

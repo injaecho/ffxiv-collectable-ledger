@@ -1342,12 +1342,14 @@
         // touched this exact component's checkbox, which always wins regardless of that toggle.
         var craftThis = hasRecipe &&
           (itemId in CRAFT_COMPONENT_OVERRIDES ? CRAFT_COMPONENT_OVERRIDES[itemId] : craftEnabled);
-        if(craftThis){
-          if(!(itemId in buyItemUnitCost)){
-            buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);
-          }
-          buyCost += buyItemUnitCost[itemId] * qty;
-          return;
+        // buyItemUnitCost only feeds the breakdown table's per-row "craft this instead" toggle --
+        // buyCost itself always prices every top-level item at its own market price (matching
+        // "Total cost to buy all" in that table, and craftCost below, its "craft everything"
+        // counterpart), regardless of which components are individually set to craft. Folding craft
+        // costs into buyCost here used to make "Buying components" silently track whatever mix of
+        // craft toggles happened to be on, wildly understating what buying everything actually costs.
+        if(craftThis && !(itemId in buyItemUnitCost)){
+          buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);
         }
         var price = priceLookup(itemId);
         if(price == null) missing[itemId] = true; else buyCost += price * qty;

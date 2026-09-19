@@ -201,12 +201,10 @@
     collectable's full ingredient tree at 0% quality, unlocking in 71-74 / 75-80 / 81-84 / 85-90 /
     91-94 / 95-100 brackets as each bracket's intermediate recipes become available -- below a
     bracket's floor, components are bought instead, same as with the toggle off. All 8 jobs are
-    simulated through those brackets together, so EXP a job earns for other jobs while crafting its
-    own components actually carries over into their level progress at the start of the next
-    bracket -- priced using each job's level at the start of the current bracket, not a full
-    turn-in-by-turn-in simulation of every job leveling in lockstep. The one exception is the final
-    95-100 bracket, whose cross-job EXP has no further bracket to carry into and shows as an
-    informational note instead.
+    simulated through those brackets together: EXP a job earns for other jobs while crafting its
+    own components (priced using each job's level at the start of the bracket) is baked back into
+    their level progress within that same bracket, not a full turn-in-by-turn-in simulation of
+    every job leveling in lockstep.
   </p>
 
   <footer>
@@ -860,12 +858,19 @@
 
   // Component recipes unlock in brackets (see COMPONENT_UNLOCK_THRESHOLD), and players level every
   // job through a bracket before the next one unlocks -- so this steps all 8 jobs through the
-  // brackets together. Within a bracket, every job's cross-job EXP is priced using every other
-  // job's level at the *start* of that bracket (a fixed snapshot, not updated turn-in by turn-in),
-  // and the EXP a job generates for others during the bracket is credited to them at the start of
-  // the *next* bracket -- not mid-bracket, so results don't depend on which job happens to be
-  // processed first. The final bracket's spillover has no further bracket to feed into, so it's
-  // surfaced as an informational, uncredited remainder instead (state[job].unappliedCrossJobExp).
+  // brackets together. Every job's cross-job EXP within a bracket is priced using every other
+  // job's level at the *start* of that bracket (a fixed snapshot, not updated turn-in by turn-in).
+  //
+  // Rather than carrying a bracket's cross-job EXP forward into the next bracket, it's baked into
+  // the *same* bracket via two passes: pass 1 measures every active job's bracket performance off
+  // the bracket-start snapshot (without committing it) and totals up what each job generated for
+  // every other job; pass 2 gives each job that total as a head start and re-simulates it through
+  // the same bracket from its own original starting point, which is what actually gets committed.
+  // Totaling pass 1 fully before any pass-2 job runs keeps this order-independent -- it doesn't
+  // matter which job happens to be processed first. This isn't a full fixed point (a job's pass-2
+  // turn-in count, and so exactly how much it re-generates for others, can shift slightly once its
+  // own head start is applied), but it's a much closer approximation than deferring a whole bracket,
+  // and it means every bracket -- including the last -- fully resolves its own spillover.
   var LEVEL_BRACKETS = [71, 75, 81, 85, 91, 95, 101].reduce(function(brackets, floor, i, arr){
     if(i < arr.length - 1) brackets.push({ floor: floor, nextFloor: arr[i + 1] });
     return brackets;
@@ -881,16 +886,15 @@
         level: level, remaining: Math.max(0, expAtCur - Math.max(0, inputs[job].exp || 0)), target: target,
         startLevel: level, startExpAtCur: expAtCur, startExp: Math.max(0, Math.min(expAtCur, inputs[job].exp || 0)),
         craftComponents: inputs[job].craftComponents, startedDone: level >= target, finished: level >= target,
-        unappliedCrossJobExp: 0,
         acc: { preExp: 0, totalTurnins: 0, counts: {}, order: [], turnInExp: 0, craftExp: 0, componentCraftExp: 0 }
       };
     });
 
-    LEVEL_BRACKETS.forEach(function(bracket, bracketIndex){
-      var isLastBracket = bracketIndex === LEVEL_BRACKETS.length - 1;
+    LEVEL_BRACKETS.forEach(function(bracket){
       var bracketStartLevel = {};
       JOB_ORDER.forEach(function(job){ bracketStartLevel[JOB_ABBR[job]] = state[job].level; });
 
+      var pass1 = {};
       var pendingCredit = {};
       JOB_ORDER.forEach(function(job){
         var s = state[job];
@@ -899,20 +903,25 @@
         if(s.level >= ceiling) return;
         var step = simulateUpTo(job, JOB_ABBR[job], s.level, s.remaining, ceiling, s.craftComponents,
           bracketStartLevel);
-        s.level = step.level; s.remaining = step.remaining;
-        mergeAcc(s.acc, step);
+        pass1[job] = { ceiling: ceiling, step: step };
         Object.keys(step.crossJobExpGiven).forEach(function(abbr){
           pendingCredit[abbr] = (pendingCredit[abbr] || 0) + step.crossJobExpGiven[abbr];
         });
-        if(s.level >= s.target) s.finished = true;
       });
 
-      JOB_ORDER.forEach(function(job){
+      Object.keys(pass1).forEach(function(job){
         var s = state[job];
+        var entry = pass1[job];
         var credit = pendingCredit[JOB_ABBR[job]] || 0;
-        if(credit <= 0 || s.finished) return;
-        if(isLastBracket){ s.unappliedCrossJobExp += credit; return; }
-        applyLumpExp(s, credit);
+        var finalStep = entry.step;
+        if(credit > 0){
+          var headStart = { level: s.level, remaining: s.remaining, target: entry.ceiling };
+          applyLumpExp(headStart, credit);
+          finalStep = simulateUpTo(job, JOB_ABBR[job], headStart.level, headStart.remaining, entry.ceiling,
+            s.craftComponents, bracketStartLevel);
+        }
+        s.level = finalStep.level; s.remaining = finalStep.remaining;
+        mergeAcc(s.acc, finalStep);
         if(s.level >= s.target) s.finished = true;
       });
     });
@@ -1011,11 +1020,6 @@
       html += '<div class="job-note">Class quests (1-15) and Cosmic Exploration (15-70, or Ishgardian ' +
         'Restoration if Endwalker\'s MSQ isn\'t done yet) are the way to earn the roughly <b class="num">' +
         fmt(acc.preExp) + '</b> EXP needed to get to level 71.</div>';
-    }
-    if(s.unappliedCrossJobExp > 0){
-      html += '<div class="job-note">Crafting other jobs\' components in the final 95-100 bracket ' +
-        'passively earned this job roughly <b class="num">' + fmt(s.unappliedCrossJobExp) + '</b> EXP ' +
-        '(informational -- there\'s no further bracket left to credit it toward).</div>';
     }
     html += '<div class="job-breakdown">';
     acc.order.forEach(function(label){

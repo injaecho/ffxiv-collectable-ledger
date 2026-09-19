@@ -157,7 +157,7 @@
   <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it. The turn-in reward isn't the only EXP a cycle gives, though: crafting the item itself also grants ordinary completion EXP, and that's now baked into every turn-in too -- computed from the game's own base-EXP-per-recipe-level and level-difference tables, assuming 100% quality (the same +300% max-quality bonus max collectability implies) and no external buffs like rested EXP or food, which we're deliberately leaving out since they're not steady-state.</p>
 
   <footer>
-    Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item.
+Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item. Your inputs are saved to this browser only (via localStorage) so they're still here next time you visit -- nothing is sent anywhere, and a different browser or device starts fresh.
   </footer>
 </div>
 
@@ -496,9 +496,7 @@
     document.body.removeChild(ta);
   }
 
-  recalcAll();
-
-  // carry state across a live republish
+  // carry state across a live republish, and persist it per-browser between visits
   function snapshot(){
     var state = {};
     jobGrid.querySelectorAll('.job-card').forEach(function(card){
@@ -522,6 +520,22 @@
     }
     recalcAll();
   }
+
+  var STORAGE_KEY = 'ffxiv-collectable-ledger-v1';
+  function saveToLocalStorage(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot())); }catch(e){}
+  }
+  function loadFromLocalStorage(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+
+  jobGrid.addEventListener('input', saveToLocalStorage);
+
+  boot(loadFromLocalStorage());
+
   try{
     if(window.claude && window.claude.hot){
       window.claude.hot.snapshot(snapshot);

@@ -1745,8 +1745,13 @@
       var qty = buyItems[id];
       var canCraft = !!RECIPE_TREE[id];
       var crafting = canCraft && (id in buyItemUnitCost);
-      var price = crafting ? buyItemUnitCost[id] : priceLookup(id);
-      var subtotal = price != null ? fmt(price * qty) + ' gil' : 'unpriced';
+      // The Price column always shows this component's own market price for reference, even while
+      // crafting it -- its actual cost contribution (buyItemUnitCost, from its own raw materials)
+      // is a different number entirely, so showing it here instead would just be confusing next to
+      // a market price that no longer applies. "crafted" in the Subtotal column stands in for that
+      // real cost, the same way "gathered" does for a free raw material.
+      var price = priceLookup(id);
+      var subtotal = crafting ? 'crafted' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
       return '<tr class="gil-breakdown-row' + (crafting ? ' gil-breakdown-crafted' : '') + '">' +
         '<td class="gil-toggle-col">' + (canCraft ?
           '<input type="checkbox" class="gil-item-craft-toggle" data-item-id="' + id + '"' +

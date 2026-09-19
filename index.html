@@ -110,6 +110,26 @@
     align-self:flex-start;
   }
 
+  .market-row{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; background: var(--paper);
+    border:1px solid var(--line); border-radius:10px; padding:10px 14px; box-shadow: var(--shadow);
+  }
+  .market-row label{ font-size:.85rem; font-weight:600; color: var(--ink); }
+  .market-row input[type=text]{
+    font-family:'IBM Plex Mono', monospace; font-size:.9rem; padding:7px 9px; border-radius:8px;
+    border:1px solid var(--line); background: var(--paper-sunken); color: var(--ink); width:200px;
+  }
+  .market-row input[type=text]:focus{ outline: 2px solid var(--teal); outline-offset:1px; }
+  .market-status{ font-size:.78rem; color: var(--ink-faint); }
+  .market-status.market-error{ color: var(--rust); }
+
+  .gil-row{ display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; color: var(--ink-soft); }
+  .gil-item b{ font-family:'IBM Plex Mono', monospace; color: var(--ink); font-weight:600; }
+  .gil-item.gil-savings b{ color: var(--accent-ink); }
+  :root:not([data-theme="light"]) .gil-item.gil-savings b{ color: var(--accent); }
+  :root[data-theme="dark"] .gil-item.gil-savings b{ color: var(--accent); }
+  .gil-note{ font-size:.76rem; color: var(--ink-faint); flex-basis:100%; }
+
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
 
@@ -188,9 +208,17 @@
     <input type="checkbox" id="craftAllCheckbox"> Craft my own components -- all jobs
   </label>
 
+  <div class="market-row">
+    <label for="worldInput">Gil prices via Universalis -- world or data center:</label>
+    <input type="text" id="worldInput" placeholder="e.g. Gilgamesh or Aether" autocomplete="off">
+    <span class="market-status" id="marketStatus"></span>
+  </div>
+
   <div class="job-grid" id="jobGrid"></div>
 
   <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
+
+  <div class="summary-bar consolidated-bar" id="gilBar" hidden></div>
 
   <p class="hint">
     Below level 71, class quests (1-15) and Cosmic Exploration (15-70) are how you level. Cosmic
@@ -202,7 +230,11 @@
     matching the batches FFXIV's crafting log unlocks recipes in (job level 70 gets you recipes up
     to level 75, 74 up to 80, 80 up to 85, 84 up to 90, 90 up to 95, 94 up to 100): EXP a job earns
     for other jobs while crafting its own components (priced using each job's level at the start of
-    the window) is baked back into their level progress within that same window.
+    the window) is baked back into their level progress within that same window. Entering a world or
+    data center pulls current market prices from Universalis (never the game client) to estimate gil
+    cost for each job's turn-ins: buying every recipe ingredient as-is versus crafting all the way
+    down to raw materials yourself. Each item is priced at its cheapest current NQ listing on that
+    world/DC -- a snapshot, not a guarantee that listing is still there when you shop.
   </p>
 
   <footer>
@@ -751,6 +783,60 @@
     return result;
   }
 
+  // For gil-cost comparisons: what you'd buy off the market under each strategy for one craft of
+  // rootItemId. "topLevel" is the item's own recipe ingredients as-is (the "just buy the parts"
+  // strategy). "leaves" is the fully-recursed demand for every base material at the bottom of the
+  // tree (the "craft everything yourself" strategy) -- same demand-aggregation approach as
+  // explodeComponents (a leaf's total demand is only finalized once every branch that needs it has
+  // contributed), kept as a separate traversal rather than sharing code with explodeComponents so
+  // that function's tested EXP-crediting behavior can't be disturbed by this unrelated feature.
+  // Cached per root item since, like explodeComponents, the result depends only on RECIPE_TREE.
+  var MATERIAL_DEMAND_CACHE = {};
+  function materialDemandFor(rootItemId){
+    if(MATERIAL_DEMAND_CACHE[rootItemId]) return MATERIAL_DEMAND_CACHE[rootItemId];
+
+    var rootRecipe = RECIPE_TREE[rootItemId];
+    var topLevel = rootRecipe ? rootRecipe.i.slice() : [];
+
+    var childEdges = {}; var indegree = {}; var recipeById = {};
+    (function collect(id, seen){
+      if(seen[id]) return;
+      seen[id] = true;
+      var recipe = RECIPE_TREE[id];
+      if(!recipe) return;
+      recipeById[id] = recipe;
+      childEdges[id] = recipe.i.map(function(pair){ return { to: pair[0], qty: pair[1] }; });
+      childEdges[id].forEach(function(edge){
+        indegree[edge.to] = (indegree[edge.to] || 0) + 1;
+        collect(edge.to, seen);
+      });
+    })(rootItemId, {});
+
+    var demand = {}; demand[rootItemId] = 1;
+    var queue = [rootItemId];
+    while(queue.length){
+      var id = queue.shift();
+      var recipe = recipeById[id];
+      if(!recipe) continue;
+      var crafts = Math.ceil(demand[id] / recipe.n);
+      childEdges[id].forEach(function(edge){
+        demand[edge.to] = (demand[edge.to] || 0) + crafts * edge.qty;
+        indegree[edge.to]--;
+        if(indegree[edge.to] === 0) queue.push(edge.to);
+      });
+    }
+
+    var leaves = {};
+    Object.keys(demand).forEach(function(id){
+      if(Number(id) === rootItemId) return;
+      if(!recipeById[id]) leaves[id] = demand[id];
+    });
+
+    var result = { topLevel: topLevel, leaves: leaves };
+    MATERIAL_DEMAND_CACHE[rootItemId] = result;
+    return result;
+  }
+
   // Splits an exploded component list into EXP the acting job earns on its own components (which
   // feeds back into that job's own turn-in countdown, same as the collectable craft itself) and
   // EXP other jobs generate for each other, keyed by ClassJob abbreviation for simulateAllJobs to
@@ -924,10 +1010,109 @@
     return state;
   }
 
+  // Gil-cost comparison: how much a job's planned turn-ins would cost bought two different ways,
+  // priced from the Universalis market board API (https://universalis.app) -- never the FFXIV
+  // client itself. "Buying components" prices the collectable's own recipe ingredients as-is;
+  // "crafting your own" prices only the raw materials at the bottom of the full ingredient tree
+  // (materialDemandFor). Both use each item's cheapest current NQ listing on the chosen world/data
+  // center as a simple point estimate -- it doesn't account for a single listing running out at
+  // that price, or for prices moving between when this loads and when you actually shop.
+  // Universalis's "aggregated" endpoint returns pre-computed cheapest-current-NQ-listing data (plus
+  // dc/region fallbacks) in well under a second even for a hundred-plus items -- the per-listing
+  // endpoint (/api/v2/{world}/{ids}) recomputes from raw listings per item server-side and measured
+  // over 15s (occasionally timing out entirely) for the ~90-item batches this tool needs.
+  var UNIVERSALIS_AGGREGATED_ORIGIN = 'https://universalis.app/api/v2/aggregated/';
+  var UNIVERSALIS_CHUNK_SIZE = 100; // Universalis accepts up to 100 comma-separated item IDs per call
+  var GIL_PRICE_CACHE = {}; // { [world]: { [itemId]: price|null } }, null = no current NQ listing
+  var gilFetchToken = 0;
+
+  // A world query's minListing only has a "world" key; a data-center or region query only has "dc"
+  // or "region" -- picking the most specific one present lets the same code handle whichever the
+  // user typed into the world/DC field.
+  function priceFromAggregatedEntry(entry){
+    if(!entry || !entry.nq || !entry.nq.minListing) return null;
+    var scope = entry.nq.minListing.world || entry.nq.minListing.dc || entry.nq.minListing.region;
+    return (scope && scope.price != null && scope.price > 0) ? scope.price : null;
+  }
+
+  function fetchPricesChunk(world, ids){
+    var url = UNIVERSALIS_AGGREGATED_ORIGIN + encodeURIComponent(world) + '/' + ids.join(',');
+    return fetch(url).then(function(res){
+      if(!res.ok) throw new Error('Universalis request failed with HTTP ' + res.status);
+      return res.json();
+    }).then(function(data){
+      var prices = {};
+      (data.results || []).forEach(function(entry){ prices[entry.itemId] = priceFromAggregatedEntry(entry); });
+      return prices;
+    });
+  }
+
+  // Resolves to { [itemId]: price|null } for exactly the requested IDs. Chunked to stay at or under
+  // Universalis's per-request item cap; the handful of chunks a full 8-job run needs is nowhere
+  // close to its 25 req/s, 8-connections-per-IP rate limit even fired back to back.
+  function fetchPrices(world, itemIds){
+    var chunks = [];
+    for(var i = 0; i < itemIds.length; i += UNIVERSALIS_CHUNK_SIZE){
+      chunks.push(itemIds.slice(i, i + UNIVERSALIS_CHUNK_SIZE));
+    }
+    return Promise.all(chunks.map(function(chunk){ return fetchPricesChunk(world, chunk); }))
+      .then(function(pages){
+        var merged = {};
+        pages.forEach(function(page){
+          Object.keys(page).forEach(function(id){ merged[id] = page[id]; });
+        });
+        var prices = {};
+        itemIds.forEach(function(id){ prices[id] = (id in merged) ? merged[id] : null; });
+        return prices;
+      });
+  }
+
+  // Every base item this run's turn-ins would need to price, under either buying strategy, across
+  // every in-progress job -- the set actually fetched from Universalis.
+  function collectGilItemIds(state){
+    var idSet = {};
+    JOB_ORDER.forEach(function(job){
+      var s = state[job];
+      if(!s || s.startedDone) return;
+      s.acc.order.forEach(function(label){
+        if(!s.acc.counts[label]) return;
+        var md = materialDemandFor(itemIdForLabel(job, label));
+        md.topLevel.forEach(function(pair){ idSet[pair[0]] = true; });
+        Object.keys(md.leaves).forEach(function(id){ idSet[id] = true; });
+      });
+    });
+    return Object.keys(idSet).map(Number);
+  }
+
+  // Total gil cost for one job's full run of planned turn-ins, under both buying strategies, using
+  // whatever prices priceLookup currently has cached. Items priceLookup can't answer for (no
+  // current NQ listing on that world/DC, or not yet fetched) are counted as missing rather than
+  // silently priced at 0, so the UI can flag an estimate as incomplete instead of understating it.
+  function jobGilBreakdown(job, acc, priceLookup){
+    var buyCost = 0; var craftCost = 0; var missing = {};
+    acc.order.forEach(function(label){
+      var count = acc.counts[label];
+      if(!count) return;
+      var md = materialDemandFor(itemIdForLabel(job, label));
+      md.topLevel.forEach(function(pair){
+        var price = priceLookup(pair[0]);
+        if(price == null) missing[pair[0]] = true; else buyCost += price * pair[1] * count;
+      });
+      Object.keys(md.leaves).forEach(function(id){
+        var price = priceLookup(id);
+        if(price == null) missing[id] = true; else craftCost += price * md.leaves[id] * count;
+      });
+    });
+    return { buyCost: buyCost, craftCost: craftCost, missingCount: Object.keys(missing).length };
+  }
+
   var jobGrid = document.getElementById('jobGrid');
   var summaryBar = document.getElementById('summaryBar');
   var consolidatedBar = document.getElementById('consolidatedBar');
+  var gilBar = document.getElementById('gilBar');
   var craftAllCheckbox = document.getElementById('craftAllCheckbox');
+  var worldInput = document.getElementById('worldInput');
+  var marketStatus = document.getElementById('marketStatus');
 
   JOB_ORDER.forEach(function(job){
     var card = document.createElement('div');
@@ -948,7 +1133,8 @@
       '<label class="craft-toggle"><input type="checkbox" data-f="craftComponents"> ' +
         'Craft my own components</label>' +
       '<div class="job-progress" data-r="progress"></div>' +
-      '<div data-r="body"></div>';
+      '<div data-r="body"></div>' +
+      '<div data-r="gil"></div>';
     jobGrid.appendChild(card);
   });
 
@@ -1116,6 +1302,103 @@
       consolidatedBar.hidden = true;
       consolidatedBar.innerHTML = '';
     }
+
+    updateGilSavings(state, cards);
+  }
+
+  // Fills in each job's gil-cost comparison and the grand-total gilBar once Universalis prices are
+  // available. Called at the end of every recalcAll -- cheap to call on every keystroke since it
+  // only ever fetches item IDs it doesn't already have cached for the current world/DC; changing a
+  // level or target rarely changes which items are needed, so most calls hit the cache and touch
+  // the network not at all.
+  function updateGilSavings(state, cards){
+    var world = worldInput.value.trim();
+    if(!world){
+      gilBar.hidden = true;
+      gilBar.innerHTML = '';
+      marketStatus.textContent = '';
+      marketStatus.classList.remove('market-error');
+      JOB_ORDER.forEach(function(job){
+        var el = cards[job].querySelector('[data-r="gil"]');
+        if(el) el.innerHTML = '';
+      });
+      return;
+    }
+
+    var ids = collectGilItemIds(state);
+    if(!ids.length){
+      gilBar.hidden = true;
+      gilBar.innerHTML = '';
+      return;
+    }
+
+    if(!GIL_PRICE_CACHE[world]) GIL_PRICE_CACHE[world] = {};
+    var cache = GIL_PRICE_CACHE[world];
+    var missing = ids.filter(function(id){ return !(id in cache); });
+
+    if(!missing.length){
+      marketStatus.textContent = '';
+      marketStatus.classList.remove('market-error');
+      renderGilResults(state, cards, world, cache);
+      return;
+    }
+
+    var token = ++gilFetchToken;
+    marketStatus.textContent = 'Fetching market prices from Universalis...';
+    marketStatus.classList.remove('market-error');
+    fetchPrices(world, missing).then(function(prices){
+      if(token !== gilFetchToken) return; // superseded by a newer world/input change
+      Object.keys(prices).forEach(function(id){ cache[id] = prices[id]; });
+      marketStatus.textContent = '';
+      renderGilResults(state, cards, world, cache);
+    }).catch(function(){
+      if(token !== gilFetchToken) return;
+      marketStatus.textContent = 'Could not fetch prices for "' + world + '" -- check the world/data ' +
+        'center name and your connection.';
+      marketStatus.classList.add('market-error');
+      gilBar.hidden = true;
+      gilBar.innerHTML = '';
+    });
+  }
+
+  function renderGilResults(state, cards, world, cache){
+    var priceLookup = function(id){ var v = cache[id]; return v === undefined ? null : v; };
+    var totalBuy = 0; var totalCraft = 0; var totalMissing = 0; var jobsShown = 0;
+
+    JOB_ORDER.forEach(function(job){
+      var s = state[job];
+      var el = cards[job].querySelector('[data-r="gil"]');
+      if(!el) return;
+      if(!s || s.startedDone || s.acc.totalTurnins === 0){ el.innerHTML = ''; return; }
+
+      var b = jobGilBreakdown(job, s.acc, priceLookup);
+      totalBuy += b.buyCost; totalCraft += b.craftCost; totalMissing += b.missingCount; jobsShown++;
+      var savings = b.buyCost - b.craftCost;
+      el.innerHTML = '<div class="gil-row">' +
+        '<span class="gil-item">Buying components: <b class="num">' + fmt(b.buyCost) + ' gil</b></span>' +
+        '<span class="gil-item">Crafting your own: <b class="num">' + fmt(b.craftCost) + ' gil</b></span>' +
+        '<span class="gil-item gil-savings">Est. savings: <b class="num">' + fmt(savings) + ' gil</b></span>' +
+        (b.missingCount ? '<span class="gil-note">' + b.missingCount + ' item(s) have no current NQ ' +
+          'listing on ' + world + ' -- treated as 0 gil.</span>' : '') +
+        '</div>';
+    });
+
+    if(!jobsShown){
+      gilBar.hidden = true;
+      gilBar.innerHTML = '';
+      return;
+    }
+
+    gilBar.hidden = false;
+    gilBar.innerHTML =
+      '<div class="summary-item"><span class="lbl">Buying every component (' + world + ')</span>' +
+        '<span class="val num">' + fmt(totalBuy) + ' gil</span></div>' +
+      '<div class="summary-item"><span class="lbl">Crafting your own components</span>' +
+        '<span class="val num">' + fmt(totalCraft) + ' gil</span></div>' +
+      '<div class="summary-item"><span class="lbl">Estimated gil saved</span>' +
+        '<span class="val num">' + fmt(totalBuy - totalCraft) + ' gil</span></div>' +
+      (totalMissing ? '<div class="summary-item"><span class="lbl">Unpriced items</span>' +
+        '<span class="val num">' + totalMissing + '</span></div>' : '');
   }
 
   document.body.addEventListener('click', function(e){
@@ -1204,6 +1487,32 @@
     saveDebounceTimer = setTimeout(saveToLocalStorage, 400);
   });
 
+  var WORLD_STORAGE_KEY = 'ffxiv-collectable-ledger-world-v1';
+  function saveWorldToLocalStorage(){
+    try{ localStorage.setItem(WORLD_STORAGE_KEY, worldInput.value); }
+    catch(e){ console.warn('Could not save your world/data center to this browser:', e); }
+  }
+  function loadWorldFromLocalStorage(){
+    try{ return localStorage.getItem(WORLD_STORAGE_KEY) || ''; }
+    catch(e){
+      console.warn('Could not load your saved world/data center (corrupted or blocked storage):', e);
+      return '';
+    }
+  }
+
+  // Debounced separately from the job-grid save: every keystroke here starts a brand-new
+  // Universalis price cache (the cache is keyed by the exact world string), so firing recalcAll on
+  // every keystroke while typing a world name would fire a fresh batch of fetches per keystroke.
+  var gilDebounceTimer = null;
+  worldInput.addEventListener('input', function(){
+    clearTimeout(gilDebounceTimer);
+    gilDebounceTimer = setTimeout(function(){
+      recalcAll();
+      saveWorldToLocalStorage();
+    }, 500);
+  });
+
+  worldInput.value = loadWorldFromLocalStorage();
   boot(loadFromLocalStorage());
 
   try{

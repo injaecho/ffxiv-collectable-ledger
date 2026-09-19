@@ -1132,9 +1132,11 @@
     return ITEM_NAME_CACHE[itemId] || ('Item #' + itemId);
   }
 
-  function teamcraftRawItemUrl(itemId){
-    var slug = itemDisplayName(itemId).replace(/\s+/g, '-');
-    return 'https://ffxivteamcraft.com/db/en/item/' + itemId + '/' + slug;
+  // Deep-links straight to this item's own Universalis listing, scoped to the world/DC/region this
+  // breakdown is already pricing against -- "server" is Universalis's own query param for this (it
+  // accepts a world, DC, or region name interchangeably, same as the price-fetch endpoint does).
+  function universalisItemUrl(itemId, world){
+    return 'https://universalis.app/market/' + itemId + '?server=' + encodeURIComponent(world);
   }
 
   // Every base item this run's turn-ins would need to price, under either buying strategy, across
@@ -1446,7 +1448,7 @@
 
   // Renders one strategy's line items (sorted by display name) as rows of name / qty / unit price /
   // subtotal, for the collapsible breakdown under each job's gil summary.
-  function renderGilBreakdownRows(itemsMap, priceLookup){
+  function renderGilBreakdownRows(itemsMap, priceLookup, world){
     var ids = Object.keys(itemsMap);
     if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
     ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
@@ -1455,7 +1457,7 @@
       var price = priceLookup(id);
       var subtotal = price != null ? fmt(price * qty) + ' gil' : 'unpriced';
       return '<div class="gil-breakdown-row">' +
-        '<a class="brk-name" href="' + teamcraftRawItemUrl(id) + '" target="_blank" rel="noopener">' +
+        '<a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" rel="noopener">' +
           itemDisplayName(id) + '</a>' +
         '<span class="gil-breakdown-qty num">' + fmt(qty) + '&times;</span>' +
         '<span class="gil-breakdown-price num">' + (price != null ? fmt(price) + ' ea' : '--') + '</span>' +
@@ -1488,11 +1490,11 @@
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying components</div>' +
-            renderGilBreakdownRows(b.buyItems, priceLookup) +
+            renderGilBreakdownRows(b.buyItems, priceLookup, world) +
           '</div>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
-            renderGilBreakdownRows(b.craftItems, priceLookup) +
+            renderGilBreakdownRows(b.craftItems, priceLookup, world) +
           '</div>' +
         '</details>';
     });

@@ -76,7 +76,13 @@
     box-shadow: var(--shadow); display:flex; flex-direction:column; gap:12px;
   }
   .job-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-  .job-name{ font-family:'Spectral', serif; font-weight:600; font-size:1.08rem; }
+  .job-name{
+    font-family:'Spectral', serif; font-weight:600; font-size:1.08rem;
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  .job-icon{ width:18px; height:18px; flex-shrink:0; color: var(--accent-ink); }
+  :root:not([data-theme="light"]) .job-icon{ color: var(--accent); }
+  :root[data-theme="dark"] .job-icon{ color: var(--accent); }
   .job-total{ font-family:'IBM Plex Mono', monospace; font-size:.82rem; color: var(--ink-soft); }
   .job-total b{ color: var(--accent-ink); font-size:1rem; }
   :root:not([data-theme="light"]) .job-total b{ color: var(--accent); }
@@ -173,9 +179,9 @@
   </p>
 
   <footer>
-    Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link"
+    Each item name links straight to its FFXIV TeamCraft item page. "Copy TeamCraft import link"
     copies a Garland Tools-format list link with every item and its exact quantity already encoded
-    -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the
+    -- paste it into TeamCraft under Lists &rarr; the import icon &rarr; "paste your link to the
     external list" to build a list.
   </footer>
 </div>
@@ -194,7 +200,7 @@
     13659000,15348000,15912000,17534000,18263000,20322000,20957000,22979000,23789000,29023000
   ];
 
-  // Real Lv 71-100 "Rarefied" collectable EXP at max collectability, from FFXIV Teamcraft's live
+  // Real Lv 71-100 "Rarefied" collectable EXP at max collectability, from FFXIV TeamCraft's live
   // collectables data. Confirmed identical across all 8 DoH jobs at a given level -- only the item
   // name differs per job. Each item is also craftable (and turn-in-able) one level early. No
   // collectable exists below level 71 (Cosmic Exploration and class quests cover levels 1-70).
@@ -249,7 +255,29 @@
   };
   var JOB_ORDER = ["Carpenter","Blacksmith","Armorer","Goldsmith","Leatherworker","Weaver","Alchemist","Culinarian"];
 
-  // Game item IDs for each Rarefied collectable (same IDs Garland Tools and Teamcraft both use).
+  // Simple line-art glyphs standing in for each Disciple of the Hand's tool -- not game assets.
+  var SVG_ICON_ATTRS = 'class="job-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+  var JOB_ICONS = {
+    Carpenter: '<svg ' + SVG_ICON_ATTRS + '><path d="M3 17 L14 6"/><path d="M14 6 L18 2"/>' +
+      '<path d="M5.5 14.5 L7 13 M8 11.5 L9.5 10 M10.5 8.5 L12 7"/></svg>',
+    Blacksmith: '<svg ' + SVG_ICON_ATTRS + '><rect x="2" y="2" width="7" height="5" rx="1"/>' +
+      '<path d="M7 6 L16 17"/></svg>',
+    Armorer: '<svg ' + SVG_ICON_ATTRS + '><path d="M10 2 L17 5 V10 C17 14 14 17.5 10 19 ' +
+      'C6 17.5 3 14 3 10 V5 Z"/><path d="M10 6 V13 M7 9.5 H13"/></svg>',
+    Goldsmith: '<svg ' + SVG_ICON_ATTRS + '><path d="M4 8 L7 3 H13 L16 8 L10 18 Z"/>' +
+      '<path d="M4 8 H16"/><path d="M7 3 L10 8 L13 3"/></svg>',
+    Leatherworker: '<svg ' + SVG_ICON_ATTRS + '><path d="M3 17 C3 10 8 4 17 3 C15 8 11 13 3 17 Z"/></svg>',
+    Weaver: '<svg ' + SVG_ICON_ATTRS + '><rect x="6" y="2" width="8" height="16" rx="2.5"/>' +
+      '<path d="M6 6.5 H14 M6 10 H14 M6 13.5 H14"/></svg>',
+    Alchemist: '<svg ' + SVG_ICON_ATTRS + '><path d="M8 2 H12 M8 2 V6 L3.5 15 C2.7 16.8 4 18.5 6 18.5 ' +
+      'H14 C16 18.5 17.3 16.8 16.5 15 L12 6 V2"/><path d="M6.5 12.5 H13.5"/></svg>',
+    Culinarian: '<svg ' + SVG_ICON_ATTRS + '><path d="M4 9 H16 L15 16.5 C15 17.5 14 18 13 18 H7 ' +
+      'C6 18 5 17.5 5 16.5 Z"/><path d="M4 9 C4 6.5 6.5 5 10 5 C13.5 5 16 6.5 16 9"/>' +
+      '<path d="M7 2 C7 3 8 3 8 4 M13 2 C13 3 14 3 14 4"/></svg>'
+  };
+
+  // Game item IDs for each Rarefied collectable (same IDs Garland Tools and TeamCraft both use).
   var ITEM_IDS = {
     Carpenter: {72:30981,74:30982,76:30983,78:30984,80:31652,
       81:35626,83:35627,85:35628,87:35629,89:35630,90:36619,91:44185,93:44186,95:44187,97:44188,99:44189,100:44190},
@@ -294,9 +322,9 @@
     });
   }
 
-  // Builds a Garland Tools "group" link encoding item IDs + quantities. Teamcraft's list importer
+  // Builds a Garland Tools "group" link encoding item IDs + quantities. TeamCraft's list importer
   // (Lists -> import icon -> "paste link to external list") reads this format directly and turns
-  // it into "add N of item X" lines for a real Teamcraft list -- verified against Teamcraft's own
+  // it into "add N of item X" lines for a real TeamCraft list -- verified against TeamCraft's own
   // open-source parser for garlandtools.org/db/#group/ links.
   function buildGarlandImportLink(job, order, counts){
     var parts = garlandPartsFor(job, order, counts);
@@ -423,7 +451,7 @@
     card.dataset.job = job;
     var ex = EXAMPLE_STATE[job];
     card.innerHTML =
-      '<div class="job-head"><span class="job-name">' + job + '</span>' +
+      '<div class="job-head"><span class="job-name">' + (JOB_ICONS[job] || '') + job + '</span>' +
         '<span class="job-total" data-r="total"></span></div>' +
       '<div class="job-inputs">' +
         '<div class="field"><label>Current level</label>' +
@@ -498,7 +526,7 @@
     var importUrl = buildGarlandImportLink(job, result.order, result.counts);
     html += '<div class="import-row">' +
       '<button type="button" class="copy-btn" data-copy="' + importUrl.replace(/"/g, '&quot;') + '">' +
-        'Copy Teamcraft import link</button>' +
+        'Copy TeamCraft import link</button>' +
       '<span class="copy-flag" hidden>Copied!</span>' +
       '</div>';
     bodyEl.innerHTML = html;
@@ -554,7 +582,7 @@
           distinctItems + ' items &middot; ' + fmt(grandTotal) + ' turn-ins</span></div>' +
         '<div class="import-row">' +
           '<button type="button" class="copy-btn" data-copy="' + combinedUrl.replace(/"/g, '&quot;') + '">' +
-            'Copy consolidated Teamcraft import link</button>' +
+            'Copy consolidated TeamCraft import link</button>' +
           '<span class="copy-flag" hidden>Copied!</span>' +
         '</div>';
     } else {

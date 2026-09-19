@@ -150,22 +150,23 @@
     font-size:.74rem; font-weight:600; color: var(--ink-soft); text-transform:uppercase;
     letter-spacing:.04em; margin-bottom:4px;
   }
-  .gil-breakdown-row{
-    display:flex; align-items:baseline; gap:8px; padding:3px 0; font-size:.78rem;
-    border-bottom:1px dashed var(--line);
-  }
-  .gil-breakdown-row:last-child{ border-bottom:none; }
-  .gil-breakdown-row .brk-name{ flex:1 1 auto; min-width:0; }
-  .gil-breakdown-qty{ color: var(--ink-faint); flex:none; width:4.5em; text-align:right; }
-  .gil-breakdown-price{ color: var(--ink-soft); flex:none; width:6em; text-align:right; }
-  .gil-breakdown-subtotal{ font-weight:600; flex:none; width:7em; text-align:right; }
   .gil-breakdown-empty{ font-size:.78rem; color: var(--ink-faint); }
-  .gil-breakdown-total{ border-bottom:none; border-top:1px solid var(--line); margin-top:2px; padding-top:5px; }
-  .gil-breakdown-total-label{ flex:1 1 auto; min-width:0; font-weight:600; color: var(--ink); }
-  .gil-breakdown-total .gil-breakdown-subtotal{ font-weight:700; color: var(--accent-ink); }
-  :root:not([data-theme="light"]) .gil-breakdown-total .gil-breakdown-subtotal{ color: var(--accent); }
-  :root[data-theme="dark"] .gil-breakdown-total .gil-breakdown-subtotal{ color: var(--accent); }
-  .gil-breakdown-row.gil-breakdown-free .gil-breakdown-subtotal{ color: var(--teal); font-style:italic; }
+
+  .gil-breakdown-table{ width:100%; border-collapse:collapse; font-size:.78rem; }
+  .gil-breakdown-table th{
+    text-align:left; font-size:.7rem; font-weight:600; color: var(--ink-faint); text-transform:uppercase;
+    letter-spacing:.04em; padding:3px 6px 5px; border-bottom:1px solid var(--line);
+  }
+  .gil-breakdown-table td{ padding:4px 6px; border-bottom:1px dashed var(--line); color: var(--ink-soft); }
+  .gil-breakdown-table th.num, .gil-breakdown-table td.num{ text-align:right; white-space:nowrap; }
+  .gil-breakdown-table tbody tr:last-child td{ border-bottom:none; }
+  .gil-breakdown-table tfoot td{
+    border-bottom:none; border-top:1px solid var(--line); padding-top:6px; font-weight:600; color: var(--ink);
+  }
+  .gil-breakdown-table tfoot td.num{ font-weight:700; color: var(--accent-ink); }
+  :root:not([data-theme="light"]) .gil-breakdown-table tfoot td.num{ color: var(--accent); }
+  :root[data-theme="dark"] .gil-breakdown-table tfoot td.num{ color: var(--accent); }
+  .gil-breakdown-row.gil-breakdown-free td.num:last-child{ color: var(--teal); font-style:italic; }
 
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
@@ -1553,8 +1554,8 @@
     });
   }
 
-  // Renders one strategy's line items (sorted by display name) as rows of name / qty / unit price /
-  // subtotal, for the collapsible breakdown under each job's gil summary.
+  // Renders one strategy's line items (sorted by display name) as a labeled table of item / qty /
+  // unit price / subtotal, for the collapsible breakdown under each job's gil summary.
   // `total` is the strategy's already-computed cost (jobGilBreakdown's buyCost/craftCost) rather
   // than re-summed from the rows here, so it always matches the summary line above it exactly.
   function renderGilBreakdownRows(itemsMap, priceLookup, world, total, isFreeGathered){
@@ -1566,20 +1567,20 @@
       var price = priceLookup(id);
       var free = !!(isFreeGathered && isFreeGathered(id));
       var subtotal = free ? 'gathered' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
-      return '<div class="gil-breakdown-row' + (free ? ' gil-breakdown-free' : '') + '">' +
-        '<a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" rel="noopener">' +
-          itemDisplayName(id) + '</a>' +
-        '<span class="gil-breakdown-qty num">' + fmt(qty) + '&times;</span>' +
-        '<span class="gil-breakdown-price num">' + (price != null ? fmt(price) + ' ea' : '--') + '</span>' +
-        '<span class="gil-breakdown-subtotal num">' + subtotal + '</span>' +
-        '</div>';
+      return '<tr class="gil-breakdown-row' + (free ? ' gil-breakdown-free' : '') + '">' +
+        '<td><a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" ' +
+          'rel="noopener">' + itemDisplayName(id) + '</a></td>' +
+        '<td class="num">' + fmt(qty) + '&times;</td>' +
+        '<td class="num">' + (price != null ? fmt(price) + ' gil' : '--') + '</td>' +
+        '<td class="num">' + subtotal + '</td>' +
+        '</tr>';
     }).join('');
-    return rows + '<div class="gil-breakdown-row gil-breakdown-total">' +
-      '<span class="gil-breakdown-total-label">Total</span>' +
-      '<span class="gil-breakdown-qty num"></span>' +
-      '<span class="gil-breakdown-price num"></span>' +
-      '<span class="gil-breakdown-subtotal num">' + fmt(total) + ' gil</span>' +
-      '</div>';
+    return '<table class="gil-breakdown-table">' +
+      '<thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th>' +
+        '<th class="num">Subtotal</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '<tfoot><tr><td colspan="3">Total</td><td class="num">' + fmt(total) + ' gil</td></tr></tfoot>' +
+      '</table>';
   }
 
   function renderGilResults(state, cards, world, cache){

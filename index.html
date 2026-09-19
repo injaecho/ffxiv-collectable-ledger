@@ -1305,8 +1305,13 @@
       var md = materialDemandFor(itemIdForLabel(job, label));
       md.topLevel.forEach(function(pair){
         var itemId = pair[0]; var qty = pair[1] * count;
-        buyItems[itemId] = (buyItems[itemId] || 0) + qty;
-        var craftThis = !!RECIPE_TREE[itemId] && !!CRAFT_COMPONENT_OVERRIDES[itemId];
+        var hasRecipe = !!RECIPE_TREE[itemId];
+        // A raw material used directly as a top-level ingredient (a crystal, most often) is the
+        // same item that already shows up in the raw-materials table below (materialDemandFor's
+        // leaves always includes it too) -- list it there only, not duplicated here as well. Its
+        // cost still counts toward buyCost, same as always; only the displayed row is skipped.
+        if(hasRecipe) buyItems[itemId] = (buyItems[itemId] || 0) + qty;
+        var craftThis = hasRecipe && !!CRAFT_COMPONENT_OVERRIDES[itemId];
         if(craftThis){
           if(!(itemId in buyItemUnitCost)){
             buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);

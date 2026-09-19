@@ -1373,16 +1373,20 @@
   var CRAFT_COMPONENT_OVERRIDES = {};
 
   // Builds the current isFreeGathered(itemId) predicate from the gather toggles' live checked
-  // state. "gather" (regular Miner/Botanist nodes) is always free once the master toggle is on --
-  // the sub-toggles only ever ADD more categories on top of that default, never remove it -- unless
-  // a per-item override says otherwise.
+  // state. An explicit per-item override always wins, checked before anything else -- including the
+  // master toggle -- the same way a component's explicit Craft override wins regardless of that
+  // job's own "Craft my own components" state. With no override, "gather" (regular Miner/Botanist
+  // nodes) is free once the master toggle is on; the sub-toggles only ever ADD more categories on
+  // top of that default, never remove it. With the master toggle off, everything defaults to bought,
+  // same as always -- only an explicit override can still mark a specific item as gathered.
   function currentIsFreeGathered(){
-    if(!gatherOwnCheckbox.checked) return function(){ return false; };
+    var masterOn = gatherOwnCheckbox.checked;
     var includeTimed = gatherTimedCheckbox.checked;
     var includeFish = gatherFishCheckbox.checked;
     var includeOther = gatherOtherCheckbox.checked;
     return function(itemId){
       if(itemId in GATHER_ITEM_OVERRIDES) return GATHER_ITEM_OVERRIDES[itemId];
+      if(!masterOn) return false;
       var source = RAW_MATERIAL_SOURCE[itemId] || 'other';
       if(source === 'gather') return true;
       if(source === 'timed') return includeTimed;
@@ -1812,8 +1816,7 @@
           '</div>' +
           (craftEnabled ? '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +
-            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered,
-              gatherOwnCheckbox.checked) +
+            renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered, true) +
           '</div>' : '') +
         '</details>';
     });

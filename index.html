@@ -116,11 +116,12 @@
     border:1px solid var(--line); border-radius:10px; padding:10px 14px; box-shadow: var(--shadow);
   }
   .market-row label{ font-size:.85rem; font-weight:600; color: var(--ink); }
-  .market-row input[type=text]{
+  .market-row select{
     font-family:'IBM Plex Mono', monospace; font-size:.9rem; padding:7px 9px; border-radius:8px;
-    border:1px solid var(--line); background: var(--paper-sunken); color: var(--ink); width:200px;
+    border:1px solid var(--line); background: var(--paper-sunken); color: var(--ink); width:160px;
   }
-  .market-row input[type=text]:focus{ outline: 2px solid var(--teal); outline-offset:1px; }
+  .market-row select:focus{ outline: 2px solid var(--teal); outline-offset:1px; }
+  .market-row select:disabled{ opacity:.6; cursor:not-allowed; }
   .market-status{ font-size:.78rem; color: var(--ink-faint); }
   .market-status.market-error{ color: var(--rust); }
 
@@ -233,8 +234,13 @@
   </label>
 
   <div class="market-row">
-    <label for="worldInput">Gil prices via Universalis -- world or data center:</label>
-    <input type="text" id="worldInput" placeholder="e.g. Gilgamesh or Aether" autocomplete="off">
+    <label for="dcSelect">Gil prices via Universalis:</label>
+    <select id="dcSelect" aria-label="Data center" disabled>
+      <option value="">Loading data centers...</option>
+    </select>
+    <select id="worldSelect" aria-label="World" disabled>
+      <option value="">Choose a data center first</option>
+    </select>
     <span class="market-status" id="marketStatus"></span>
   </div>
 
@@ -254,11 +260,11 @@
     matching the batches FFXIV's crafting log unlocks recipes in (job level 70 gets you recipes up
     to level 75, 74 up to 80, 80 up to 85, 84 up to 90, 90 up to 95, 94 up to 100): EXP a job earns
     for other jobs while crafting its own components (priced using each job's level at the start of
-    the window) is baked back into their level progress within that same window. Entering a world or
-    data center pulls current market prices from Universalis (never the game client) to estimate gil
-    cost for each job's turn-ins: buying every recipe ingredient as-is versus crafting all the way
-    down to raw materials yourself. Each item is priced at its cheapest current NQ listing on that
-    world/DC -- a snapshot, not a guarantee that listing is still there when you shop.
+    the window) is baked back into their level progress within that same window. Picking a data
+    center and then a world pulls current market prices from Universalis (never the game client) to
+    estimate gil cost for each job's turn-ins: buying every recipe ingredient as-is versus crafting
+    all the way down to raw materials yourself. Each item is priced at its cheapest current NQ
+    listing on that world -- a snapshot, not a guarantee that listing is still there when you shop.
   </p>
 
   <footer>
@@ -1051,8 +1057,9 @@
   var gilFetchToken = 0;
 
   // A world query's minListing only has a "world" key; a data-center or region query only has "dc"
-  // or "region" -- picking the most specific one present lets the same code handle whichever the
-  // user typed into the world/DC field.
+  // or "region" -- picking the most specific one present lets this same code keep working
+  // regardless of scope. The dropdown UI always sends a plain world name, but the fallbacks are
+  // cheap to keep in case that ever changes (e.g. a future DC-wide pricing mode).
   function priceFromAggregatedEntry(entry){
     if(!entry || !entry.nq || !entry.nq.minListing) return null;
     var scope = entry.nq.minListing.world || entry.nq.minListing.dc || entry.nq.minListing.region;
@@ -1189,7 +1196,8 @@
   var consolidatedBar = document.getElementById('consolidatedBar');
   var gilBar = document.getElementById('gilBar');
   var craftAllCheckbox = document.getElementById('craftAllCheckbox');
-  var worldInput = document.getElementById('worldInput');
+  var dcSelect = document.getElementById('dcSelect');
+  var worldSelect = document.getElementById('worldSelect');
   var marketStatus = document.getElementById('marketStatus');
 
   JOB_ORDER.forEach(function(job){
@@ -1390,7 +1398,7 @@
   // level or target rarely changes which items are needed, so most calls hit the cache and touch
   // the network not at all.
   function updateGilSavings(state, cards){
-    var world = worldInput.value.trim();
+    var world = worldSelect.value;
     if(!world){
       gilBar.hidden = true;
       gilBar.innerHTML = '';
@@ -1438,8 +1446,8 @@
       renderGilResults(state, cards, world, cache);
     }).catch(function(){
       if(token !== gilFetchToken) return;
-      marketStatus.textContent = 'Could not fetch prices for "' + world + '" -- check the world/data ' +
-        'center name and your connection.';
+      marketStatus.textContent = 'Could not fetch prices for "' + world + '" -- check your connection ' +
+        'and try again.';
       marketStatus.classList.add('market-error');
       gilBar.hidden = true;
       gilBar.innerHTML = '';
@@ -1604,9 +1612,12 @@
   });
 
   var WORLD_STORAGE_KEY = 'ffxiv-collectable-ledger-world-v1';
+  var DC_STORAGE_KEY = 'ffxiv-collectable-ledger-dc-v1';
   function saveWorldToLocalStorage(){
-    try{ localStorage.setItem(WORLD_STORAGE_KEY, worldInput.value); }
-    catch(e){ console.warn('Could not save your world/data center to this browser:', e); }
+    try{
+      localStorage.setItem(DC_STORAGE_KEY, dcSelect.value);
+      localStorage.setItem(WORLD_STORAGE_KEY, worldSelect.value);
+    }catch(e){ console.warn('Could not save your world/data center to this browser:', e); }
   }
   function loadWorldFromLocalStorage(){
     try{ return localStorage.getItem(WORLD_STORAGE_KEY) || ''; }
@@ -1615,20 +1626,107 @@
       return '';
     }
   }
+  function loadDcFromLocalStorage(){
+    try{ return localStorage.getItem(DC_STORAGE_KEY) || ''; }
+    catch(e){
+      console.warn('Could not load your saved world/data center (corrupted or blocked storage):', e);
+      return '';
+    }
+  }
 
-  // Debounced separately from the job-grid save: every keystroke here starts a brand-new
-  // Universalis price cache (the cache is keyed by the exact world string), so firing recalcAll on
-  // every keystroke while typing a world name would fire a fresh batch of fetches per keystroke.
-  var gilDebounceTimer = null;
-  worldInput.addEventListener('input', function(){
-    clearTimeout(gilDebounceTimer);
-    gilDebounceTimer = setTimeout(function(){
-      recalcAll();
-      saveWorldToLocalStorage();
-    }, 500);
+  // Universalis's DC/world lists are metadata, not per-item prices -- fetched once on load, not
+  // per keystroke, so unlike the old free-text field there's no debounce to worry about here: a
+  // <select> fires one change event per pick, not a stream of keystrokes, so each pick just
+  // recalculates and saves immediately.
+  var UNIVERSALIS_DATA_CENTERS_URL = 'https://universalis.app/api/v2/data-centers';
+  var UNIVERSALIS_WORLDS_URL = 'https://universalis.app/api/v2/worlds';
+  var DATA_CENTERS = []; // [{ name: string, worlds: [worldName, ...] }] once loaded
+
+  function optionsHtml(placeholder, values){
+    var html = '<option value="">' + placeholder + '</option>';
+    values.forEach(function(v){ html += '<option value="' + v + '">' + v + '</option>'; });
+    return html;
+  }
+
+  // Rebuilds the World dropdown for whichever DC is currently picked. Called both on a DC change
+  // (fresh, empty selection) and once at load (with the previously saved world, if it's still a
+  // member of the restored DC) to put the whole picker back the way the user left it.
+  function populateWorldSelect(dcName, preselectWorld){
+    var dc = DATA_CENTERS.filter(function(d){ return d.name === dcName; })[0];
+    if(!dc){
+      worldSelect.innerHTML = optionsHtml('Choose a data center first', []);
+      worldSelect.disabled = true;
+      return;
+    }
+    worldSelect.innerHTML = optionsHtml('Choose a world...', dc.worlds);
+    worldSelect.disabled = false;
+    if(preselectWorld && dc.worlds.indexOf(preselectWorld) !== -1) worldSelect.value = preselectWorld;
+  }
+
+  function populateDcSelect(){
+    dcSelect.innerHTML = optionsHtml('Choose a data center...', DATA_CENTERS.map(function(dc){ return dc.name; }));
+    dcSelect.disabled = false;
+    var savedDc = loadDcFromLocalStorage();
+    if(savedDc && DATA_CENTERS.some(function(dc){ return dc.name === savedDc; })){
+      dcSelect.value = savedDc;
+      populateWorldSelect(savedDc, loadWorldFromLocalStorage());
+    } else {
+      worldSelect.innerHTML = optionsHtml('Choose a data center first', []);
+      worldSelect.disabled = true;
+    }
+    // Setting .value above doesn't fire a change event, so the restored selection needs an
+    // explicit recalc to actually fetch and render gil prices for it.
+    recalcAll();
+  }
+
+  // Fetched in parallel: two small, stable, undocumented-but-widely-used Universalis endpoints
+  // (data-centers -> world IDs per DC, worlds -> id/name pairs) joined client-side into a
+  // { dcName: [worldName, ...] } shape. If either call fails (Universalis down, offline, etc.) the
+  // dropdowns are left disabled with an inline message -- everything else on the page (leveling
+  // math, TeamCraft links) keeps working, same as no world being selected just hides the gil
+  // section rather than breaking anything.
+  function loadWorldReferenceData(){
+    Promise.all([
+      fetch(UNIVERSALIS_DATA_CENTERS_URL).then(function(res){
+        if(!res.ok) throw new Error('data-centers request failed with HTTP ' + res.status);
+        return res.json();
+      }),
+      fetch(UNIVERSALIS_WORLDS_URL).then(function(res){
+        if(!res.ok) throw new Error('worlds request failed with HTTP ' + res.status);
+        return res.json();
+      })
+    ]).then(function(results){
+      var worldNameById = {};
+      results[1].forEach(function(w){ worldNameById[w.id] = w.name; });
+      DATA_CENTERS = results[0].map(function(dc){
+        var worlds = dc.worlds.map(function(id){ return worldNameById[id]; }).filter(Boolean);
+        worlds.sort();
+        return { name: dc.name, worlds: worlds };
+      });
+      DATA_CENTERS.sort(function(a, b){ return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+      populateDcSelect();
+    }).catch(function(){
+      dcSelect.innerHTML = optionsHtml('Data centers unavailable', []);
+      dcSelect.disabled = true;
+      worldSelect.innerHTML = optionsHtml('Data centers unavailable', []);
+      worldSelect.disabled = true;
+      marketStatus.textContent = 'Could not load the world/data center list from Universalis -- ' +
+        'gil pricing is unavailable this session.';
+      marketStatus.classList.add('market-error');
+    });
+  }
+
+  dcSelect.addEventListener('change', function(){
+    populateWorldSelect(dcSelect.value, '');
+    recalcAll();
+    saveWorldToLocalStorage();
+  });
+  worldSelect.addEventListener('change', function(){
+    recalcAll();
+    saveWorldToLocalStorage();
   });
 
-  worldInput.value = loadWorldFromLocalStorage();
+  loadWorldReferenceData();
   boot(loadFromLocalStorage());
 
   try{

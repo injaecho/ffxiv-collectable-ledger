@@ -191,9 +191,13 @@
     like rested EXP or food. "Craft my own components" (experimental) recursively prices out that
     collectable's full ingredient tree at 0% quality, unlocking in 71-74 / 75-80 / 81-84 / 85-90 /
     91-94 / 95-100 brackets as each bracket's intermediate recipes become available -- below a
-    bracket's floor, components are bought instead, same as with the toggle off. EXP it earns for
-    jobs other than the one you're viewing is shown as an informational note only, using that other
-    job's currently-entered level rather than simulating it leveling up alongside this one.
+    bracket's floor, components are bought instead, same as with the toggle off. All 8 jobs are
+    simulated through those brackets together, so EXP a job earns for other jobs while crafting its
+    own components actually carries over into their level progress at the start of the next
+    bracket -- priced using each job's level at the start of the current bracket, not a full
+    turn-in-by-turn-in simulation of every job leveling in lockstep. The one exception is the final
+    95-100 bracket, whose cross-job EXP has no further bracket to carry into and shows as an
+    informational note instead.
   </p>
 
   <footer>
@@ -687,7 +691,7 @@
   }
 
   // Static per job (CLASS_ITEMS/EXP_BY_LEVEL/LEVELS_ASC never change at runtime), so built once
-  // per job and cached instead of reallocated on every computeForJob call.
+  // per job and cached instead of reallocated on every simulateUpTo call.
   var TIERS_CACHE = {};
   function tiersFor(job){
     if(!TIERS_CACHE[job]){
@@ -765,35 +769,25 @@
     return { ownBonus: ownBonus, crossJobExp: crossJobExp };
   }
 
-  // Simulates turn-in by turn-in from (level, exp) to the target level, carrying leftover EXP
-  // forward and switching to a better-paying collectable the instant it unlocks. Levels below 71
-  // have no collectable yet, so that stretch is tallied separately as plain EXP. Each turn-in also
-  // earns craft-completion EXP for the craft itself (at 100% quality, no external buffs), on top
-  // of the appraiser's collectability reward -- computed from the current job level at the moment
-  // of that craft, so the level-difference modifier applies correctly if it's ever not 0.
-  //
-  // When craftComponents is on, every turn-in also crafts that item's full component tree at 0%
-  // quality (once COMPONENT_UNLOCK_THRESHOLD says that bracket's recipes are unlocked -- below
-  // that, components are bought instead, same as with the toggle off): same-job component EXP
-  // folds into this job's own craftExp (fewer turn-ins needed), while other jobs' shares
-  // accumulate in crossJobExpGiven, keyed by ClassJob abbreviation -- informational only, using
-  // otherJobLevels' currently-entered levels rather than a full simulation of those other jobs
-  // leveling up alongside this one.
-  function computeForJob(job, level, exp, target, craftComponents, otherJobLevels){
+  // All 8 jobs are simulated together bracket by bracket (see COMPONENT_UNLOCK_THRESHOLD) instead
+  // of independently, so component-crafting EXP a job generates for other jobs can actually be
+  // credited to them -- not just reported as an informational aside. simulateUpTo runs ONE job
+  // through turn-ins from (startLevel, startRemaining) up to a ceiling (a bracket boundary, or the
+  // job's own target if that comes first), carrying leftover EXP forward and switching to a
+  // better-paying collectable the instant it unlocks. Levels below 71 have no collectable yet, so
+  // that stretch is tallied separately as plain EXP. Each turn-in also earns craft-completion EXP
+  // for the craft itself (100% quality, no external buffs), on top of the appraiser's collectability
+  // reward. When craftComponents is on and this bracket's component recipes are unlocked, every
+  // turn-in also crafts that item's full component tree at 0% quality: same-job component EXP
+  // folds into this job's own craftExp, while other jobs' shares are returned in crossJobExpGiven
+  // (keyed by ClassJob abbreviation) for the caller to credit at the start of the next bracket.
+  function simulateUpTo(job, jobAbbr, startLevel, startRemaining, ceiling, craftComponents, otherJobLevels){
     var tiers = tiersFor(job);
-    var jobAbbr = JOB_ABBR[job];
-    level = Math.max(1, Math.min(100, Math.round(level) || 1));
-    target = Math.max(1, Math.min(100, Math.round(target) || 100));
-    if(level >= target){ return { done: true, alreadyThere: target !== 100, target: target }; }
-
-    var expAtCur = EXP_TO_NEXT[level] || 0;
-    var remaining = Math.max(0, expAtCur - Math.max(0, exp || 0));
-    var simLevel = level;
-    var preExp = 0;
-    var counts = {}; var order = []; var totalTurnins = 0; var guard = 0;
+    var simLevel = startLevel; var remaining = startRemaining; var guard = 0;
+    var preExp = 0; var counts = {}; var order = []; var totalTurnins = 0;
     var turnInExp = 0; var craftExp = 0; var componentCraftExp = 0; var crossJobExpGiven = {};
 
-    while(simLevel < target && guard < 100000){
+    while(simLevel < ceiling && guard < 100000){
       guard++;
       var tier = bestTierAt(simLevel, tiers);
       if(!tier){
@@ -819,16 +813,102 @@
       craftExp += thisCraftExp;
       componentCraftExp += componentExp;
       remaining -= (tier.exp + thisCraftExp + componentExp);
-      while(remaining <= 0 && simLevel < target){
+      while(remaining <= 0 && simLevel < ceiling){
         simLevel++;
-        if(simLevel >= target) break;
         remaining += (EXP_TO_NEXT[simLevel] || 0);
       }
     }
 
-    return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order,
-      startLevel: level, target: target, turnInExp: turnInExp, craftExp: craftExp,
+    return { level: simLevel, remaining: remaining, preExp: preExp, totalTurnins: totalTurnins,
+      counts: counts, order: order, turnInExp: turnInExp, craftExp: craftExp,
       componentCraftExp: componentCraftExp, crossJobExpGiven: crossJobExpGiven };
+  }
+
+  // Feeds a lump sum of EXP (component-crafting spillover from other jobs) straight into a job's
+  // in-progress level, cascading level-ups exactly like simulateUpTo's own remaining-EXP tracking
+  // but without generating turn-ins of its own -- the same "free EXP, no craft attached" treatment
+  // preExp already gets for class quests/Cosmic Exploration below level 71.
+  function applyLumpExp(state, amount){
+    state.remaining -= amount;
+    while(state.remaining <= 0 && state.level < state.target){
+      state.level++;
+      if(state.level >= state.target) break;
+      state.remaining += (EXP_TO_NEXT[state.level] || 0);
+    }
+  }
+
+  function mergeAcc(into, from){
+    into.preExp += from.preExp;
+    into.totalTurnins += from.totalTurnins;
+    into.turnInExp += from.turnInExp;
+    into.craftExp += from.craftExp;
+    into.componentCraftExp += from.componentCraftExp;
+    Object.keys(from.counts).forEach(function(label){
+      if(!(label in into.counts)){ into.counts[label] = 0; into.order.push(label); }
+      into.counts[label] += from.counts[label];
+    });
+  }
+
+  // Component recipes unlock in brackets (see COMPONENT_UNLOCK_THRESHOLD), and players level every
+  // job through a bracket before the next one unlocks -- so this steps all 8 jobs through the
+  // brackets together. Within a bracket, every job's cross-job EXP is priced using every other
+  // job's level at the *start* of that bracket (a fixed snapshot, not updated turn-in by turn-in),
+  // and the EXP a job generates for others during the bracket is credited to them at the start of
+  // the *next* bracket -- not mid-bracket, so results don't depend on which job happens to be
+  // processed first. The final bracket's spillover has no further bracket to feed into, so it's
+  // surfaced as an informational, uncredited remainder instead (state[job].unappliedCrossJobExp).
+  var LEVEL_BRACKETS = [71, 75, 81, 85, 91, 95, 101].reduce(function(brackets, floor, i, arr){
+    if(i < arr.length - 1) brackets.push({ floor: floor, nextFloor: arr[i + 1] });
+    return brackets;
+  }, []);
+
+  function simulateAllJobs(inputs){
+    var state = {};
+    JOB_ORDER.forEach(function(job){
+      var level = Math.max(1, Math.min(100, Math.round(inputs[job].level) || 1));
+      var target = Math.max(1, Math.min(100, Math.round(inputs[job].target) || 100));
+      var expAtCur = EXP_TO_NEXT[level] || 0;
+      state[job] = {
+        level: level, remaining: Math.max(0, expAtCur - Math.max(0, inputs[job].exp || 0)), target: target,
+        startLevel: level, startExpAtCur: expAtCur, startExp: Math.max(0, Math.min(expAtCur, inputs[job].exp || 0)),
+        craftComponents: inputs[job].craftComponents, startedDone: level >= target, finished: level >= target,
+        unappliedCrossJobExp: 0,
+        acc: { preExp: 0, totalTurnins: 0, counts: {}, order: [], turnInExp: 0, craftExp: 0, componentCraftExp: 0 }
+      };
+    });
+
+    LEVEL_BRACKETS.forEach(function(bracket, bracketIndex){
+      var isLastBracket = bracketIndex === LEVEL_BRACKETS.length - 1;
+      var bracketStartLevel = {};
+      JOB_ORDER.forEach(function(job){ bracketStartLevel[JOB_ABBR[job]] = state[job].level; });
+
+      var pendingCredit = {};
+      JOB_ORDER.forEach(function(job){
+        var s = state[job];
+        if(s.finished) return;
+        var ceiling = Math.min(bracket.nextFloor, s.target);
+        if(s.level >= ceiling) return;
+        var step = simulateUpTo(job, JOB_ABBR[job], s.level, s.remaining, ceiling, s.craftComponents,
+          bracketStartLevel);
+        s.level = step.level; s.remaining = step.remaining;
+        mergeAcc(s.acc, step);
+        Object.keys(step.crossJobExpGiven).forEach(function(abbr){
+          pendingCredit[abbr] = (pendingCredit[abbr] || 0) + step.crossJobExpGiven[abbr];
+        });
+        if(s.level >= s.target) s.finished = true;
+      });
+
+      JOB_ORDER.forEach(function(job){
+        var s = state[job];
+        var credit = pendingCredit[JOB_ABBR[job]] || 0;
+        if(credit <= 0 || s.finished) return;
+        if(isLastBracket){ s.unappliedCrossJobExp += credit; return; }
+        applyLumpExp(s, credit);
+        if(s.level >= s.target) s.finished = true;
+      });
+    });
+
+    return state;
   }
 
   var jobGrid = document.getElementById('jobGrid');
@@ -858,52 +938,47 @@
     jobGrid.appendChild(card);
   });
 
-  // Pure compute half of what used to be renderJob: reads a card's inputs and runs the
-  // simulation, without touching the DOM. Split out so recalcAll can compute every job first,
-  // total up cross-job component EXP across all of them, and only then paint each card --
-  // otherwise a card wouldn't know what other jobs owe it until after they'd already rendered.
-  function computeJobResult(card, otherJobLevels){
-    var job = card.dataset.job;
+  // Reads one card's raw inputs -- no DOM writes, no simulation. recalcAll gathers every card's
+  // inputs this way before calling simulateAllJobs once for all 8 jobs together.
+  function readJobInputs(card){
     var levelInput = card.querySelector('[data-f="level"]');
     var expInput = card.querySelector('[data-f="exp"]');
     var targetInput = card.querySelector('[data-f="target"]');
     var craftInput = card.querySelector('[data-f="craftComponents"]');
-    var level = parseFloat(levelInput.value) || 1;
-    var expAtCur = EXP_TO_NEXT[Math.max(1, Math.min(100, Math.round(level)))] || 0;
-    var exp = Math.max(0, Math.min(expAtCur, parseFloat(expInput.value) || 0));
     var targetRaw = parseFloat(targetInput.value);
-    var target = targetRaw ? targetRaw : 100;
-    var craftComponents = !!(craftInput && craftInput.checked);
-
-    var result = computeForJob(job, level, exp, target, craftComponents, otherJobLevels);
-    return { card: card, job: job, exp: exp, expAtCur: expAtCur, result: result };
+    return {
+      level: parseFloat(levelInput.value) || 1,
+      exp: parseFloat(expInput.value) || 0,
+      target: targetRaw ? targetRaw : 100,
+      craftComponents: !!(craftInput && craftInput.checked)
+    };
   }
 
-  function paintJob(entry, crossJobExpReceived){
-    var card = entry.card; var job = entry.job; var result = entry.result;
+  function paintJob(card, job, s){
     var totalEl = card.querySelector('[data-r="total"]');
     var progressEl = card.querySelector('[data-r="progress"]');
     var bodyEl = card.querySelector('[data-r="body"]');
 
-    if(result.done){
+    if(s.startedDone){
       totalEl.innerHTML = '';
       progressEl.innerHTML = '';
-      bodyEl.innerHTML = result.alreadyThere
-        ? '<div class="job-note done">Already at or past level ' + result.target + ' -- nothing left to turn in.</div>'
+      bodyEl.innerHTML = s.target !== 100
+        ? '<div class="job-note done">Already at or past level ' + s.target + ' -- nothing left to turn in.</div>'
         : '<div class="job-note done">Already level 100 -- nothing left to turn in.</div>';
       return { totalTurnins: 0 };
     }
 
-    totalEl.innerHTML = '<b class="num">' + fmt(result.totalTurnins) + '</b> turn-ins';
-    progressEl.innerHTML = fmt(entry.exp) + ' / ' + fmt(entry.expAtCur) + ' EXP in level ' + result.startLevel +
-      (result.target !== 100 ? ' &rarr; target lv ' + result.target : '');
+    var acc = s.acc;
+    totalEl.innerHTML = '<b class="num">' + fmt(acc.totalTurnins) + '</b> turn-ins';
+    progressEl.innerHTML = fmt(s.startExp) + ' / ' + fmt(s.startExpAtCur) + ' EXP in level ' + s.startLevel +
+      (s.target !== 100 ? ' &rarr; target lv ' + s.target : '');
 
     var html = '';
-    if(result.totalTurnins > 0){
-      var hasComponentExp = result.componentCraftExp > 0;
-      var expTotal = result.turnInExp + result.craftExp + result.componentCraftExp;
-      var turnInPct = expTotal > 0 ? Math.round(result.turnInExp / expTotal * 100) : 0;
-      var craftPct = expTotal > 0 ? Math.round(result.craftExp / expTotal * 100) : 0;
+    if(acc.totalTurnins > 0){
+      var hasComponentExp = acc.componentCraftExp > 0;
+      var expTotal = acc.turnInExp + acc.craftExp + acc.componentCraftExp;
+      var turnInPct = expTotal > 0 ? Math.round(acc.turnInExp / expTotal * 100) : 0;
+      var craftPct = expTotal > 0 ? Math.round(acc.craftExp / expTotal * 100) : 0;
       var componentPct = hasComponentExp ? 100 - turnInPct - craftPct : 0;
       if(!hasComponentExp) craftPct = 100 - turnInPct;
       html += '<div class="exp-split">' +
@@ -913,33 +988,33 @@
           '</div>' +
         '<div class="exp-split-labels">' +
           '<span class="exp-split-item"><i class="dot dot-turnin"></i>Turn-ins <b class="num">' +
-            fmt(result.turnInExp) + '</b> (' + turnInPct + '%)</span>' +
+            fmt(acc.turnInExp) + '</b> (' + turnInPct + '%)</span>' +
           '<span class="exp-split-item"><i class="dot dot-craft"></i>Crafting <b class="num">' +
-            fmt(result.craftExp) + '</b> (' + craftPct + '%)</span>' +
+            fmt(acc.craftExp) + '</b> (' + craftPct + '%)</span>' +
           (hasComponentExp ? '<span class="exp-split-item"><i class="dot dot-component"></i>' +
-            'Crafting (components) <b class="num">' + fmt(result.componentCraftExp) + '</b> (' +
+            'Crafting (components) <b class="num">' + fmt(acc.componentCraftExp) + '</b> (' +
             componentPct + '%)</span>' : '') +
         '</div>' +
       '</div>';
     }
-    if(result.preExp > 0){
+    if(acc.preExp > 0){
       html += '<div class="job-note">Class quests (1-15) and Cosmic Exploration (15-70, or Ishgardian ' +
         'Restoration if Endwalker\'s MSQ isn\'t done yet) are the way to earn the roughly <b class="num">' +
-        fmt(result.preExp) + '</b> EXP needed to get to level 71.</div>';
+        fmt(acc.preExp) + '</b> EXP needed to get to level 71.</div>';
     }
-    if(crossJobExpReceived > 0){
-      html += '<div class="job-note">Crafting other jobs\' components passively earned this job ' +
-        'roughly <b class="num">' + fmt(crossJobExpReceived) + '</b> EXP (informational -- not yet ' +
-        'subtracted from the turn-ins above).</div>';
+    if(s.unappliedCrossJobExp > 0){
+      html += '<div class="job-note">Crafting other jobs\' components in the final 95-100 bracket ' +
+        'passively earned this job roughly <b class="num">' + fmt(s.unappliedCrossJobExp) + '</b> EXP ' +
+        '(informational -- there\'s no further bracket left to credit it toward).</div>';
     }
     html += '<div class="job-breakdown">';
-    result.order.forEach(function(label){
+    acc.order.forEach(function(label){
       var url = teamcraftItemUrl(job, label);
       html += '<div class="brk-row"><a class="brk-name" href="' + url + '" target="_blank" rel="noopener">' + label +
-        '</a><span class="brk-count num">' + fmt(result.counts[label]) + '×</span></div>';
+        '</a><span class="brk-count num">' + fmt(acc.counts[label]) + '×</span></div>';
     });
     html += '</div>';
-    var importUrl = buildGarlandImportLink(job, result.order, result.counts);
+    var importUrl = buildGarlandImportLink(job, acc.order, acc.counts);
     html += '<div class="import-row">' +
       '<button type="button" class="copy-btn" data-copy="' + importUrl.replace(/"/g, '&quot;') + '">' +
         'Copy TeamCraft import link</button>' +
@@ -947,8 +1022,8 @@
       '</div>';
     bodyEl.innerHTML = html;
 
-    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts,
-      turnInExp: result.turnInExp, craftExp: result.craftExp, componentCraftExp: result.componentCraftExp };
+    return { totalTurnins: acc.totalTurnins, job: job, order: acc.order, counts: acc.counts,
+      turnInExp: acc.turnInExp, craftExp: acc.craftExp, componentCraftExp: acc.componentCraftExp };
   }
 
   function buildCombinedGarlandImportLink(perJobResults){
@@ -960,30 +1035,18 @@
   }
 
   function recalcAll(){
-    // Pass 1: every job's current level, so component crafting can look up an *other* job's
-    // level for cross-job EXP even before that other job's own card has been processed.
-    var otherJobLevels = {};
+    // Gather every card's raw inputs first, then run all 8 jobs through simulateAllJobs together
+    // in one shot -- that's what lets component-crafting EXP actually cross from one job's turn-ins
+    // into another job's level progress, instead of just being reported after the fact.
+    var cards = {};
+    var inputs = {};
     jobGrid.querySelectorAll('.job-card').forEach(function(card){
-      var levelInput = card.querySelector('[data-f="level"]');
-      var level = Math.max(1, Math.min(100, Math.round(parseFloat(levelInput.value) || 1)));
-      otherJobLevels[JOB_ABBR[card.dataset.job]] = level;
+      var job = card.dataset.job;
+      cards[job] = card;
+      inputs[job] = readJobInputs(card);
     });
+    var state = simulateAllJobs(inputs);
 
-    // Pass 2: run every job's simulation (still no DOM writes) so we can total up, per job, how
-    // much EXP it passively received from every other job's component crafting.
-    var entries = [];
-    var crossJobExpReceived = {};
-    jobGrid.querySelectorAll('.job-card').forEach(function(card){
-      var entry = computeJobResult(card, otherJobLevels);
-      entries.push(entry);
-      if(!entry.result.done && entry.result.crossJobExpGiven){
-        Object.keys(entry.result.crossJobExpGiven).forEach(function(abbr){
-          crossJobExpReceived[abbr] = (crossJobExpReceived[abbr] || 0) + entry.result.crossJobExpGiven[abbr];
-        });
-      }
-    });
-
-    // Pass 3: paint, now that every card knows what it's owed.
     var grandTotal = 0;
     var jobsInProgress = 0;
     var perJobResults = [];
@@ -991,8 +1054,8 @@
     var grandTurnInExp = 0;
     var grandCraftExp = 0;
     var grandComponentCraftExp = 0;
-    entries.forEach(function(entry){
-      var r = paintJob(entry, crossJobExpReceived[JOB_ABBR[entry.job]] || 0);
+    JOB_ORDER.forEach(function(job){
+      var r = paintJob(cards[job], job, state[job]);
       grandTotal += r.totalTurnins;
       if(r.totalTurnins > 0){
         jobsInProgress++;

@@ -39,6 +39,11 @@
   body{
     background: var(--bg); color: var(--ink); font-family: 'IBM Plex Sans', system-ui, sans-serif;
     padding-inline: 20px; padding-block: 32px 56px;
+    /* recalcAll() rebuilds job-card content on every input change and explicitly restores the
+       scroll position itself afterward -- the browser's own scroll anchoring can't tell those
+       full-innerHTML rewrites from unrelated content loading in, and otherwise fights that
+       restore with its own (wrong) compensation, which is what causes the page to jump around. */
+    overflow-anchor: none;
   }
   .wrap{ max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
   .num{ font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
@@ -1533,6 +1538,12 @@
   }
 
   function recalcAll(){
+    // Every job card's body gets fully torn down and rebuilt below (innerHTML), which destroys the
+    // element the browser's scroll-anchoring was tracking -- with nothing left to anchor to, it
+    // picks some other node after the rewrite, which can jump the page to an unrelated job whenever
+    // the new content is a different height than before. Pin the scroll position back afterward.
+    var scrollX = window.scrollX, scrollY = window.scrollY;
+
     // Gather every card's raw inputs first, then run all 8 jobs through simulateAllJobs together
     // in one shot -- that's what lets component-crafting EXP actually cross from one job's turn-ins
     // into another job's level progress, instead of just being reported after the fact.
@@ -1607,6 +1618,7 @@
     }
 
     updateGilSavings(state, cards);
+    window.scrollTo(scrollX, scrollY);
   }
 
   // Render-only: fills in each job's gil-cost comparison and the grand-total gilBar from whatever

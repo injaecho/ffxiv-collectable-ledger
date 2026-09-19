@@ -131,6 +131,29 @@
   :root[data-theme="dark"] .gil-item.gil-savings b{ color: var(--accent); }
   .gil-note{ font-size:.76rem; color: var(--ink-faint); flex-basis:100%; }
 
+  .gil-details{ margin-top:2px; }
+  .gil-details summary{
+    font-size:.76rem; color: var(--teal); cursor:pointer; font-weight:500; list-style-position:outside;
+  }
+  .gil-details summary:hover, .gil-details summary:focus-visible{ text-decoration:underline; }
+  .gil-details[open] summary{ margin-bottom:6px; }
+  .gil-breakdown-group{ margin-top:8px; }
+  .gil-breakdown-group:first-of-type{ margin-top:0; }
+  .gil-breakdown-title{
+    font-size:.74rem; font-weight:600; color: var(--ink-soft); text-transform:uppercase;
+    letter-spacing:.04em; margin-bottom:4px;
+  }
+  .gil-breakdown-row{
+    display:flex; align-items:baseline; gap:8px; padding:3px 0; font-size:.78rem;
+    border-bottom:1px dashed var(--line);
+  }
+  .gil-breakdown-row:last-child{ border-bottom:none; }
+  .gil-breakdown-row .brk-name{ flex:1 1 auto; min-width:0; }
+  .gil-breakdown-qty{ color: var(--ink-faint); flex:none; width:4.5em; text-align:right; }
+  .gil-breakdown-price{ color: var(--ink-soft); flex:none; width:6em; text-align:right; }
+  .gil-breakdown-subtotal{ font-weight:600; flex:none; width:7em; text-align:right; }
+  .gil-breakdown-empty{ font-size:.78rem; color: var(--ink-faint); }
+
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
 
@@ -1068,6 +1091,52 @@
       });
   }
 
+  // Item names for the price breakdown, from XIVAPI's Item sheet (the same source this file already
+  // trusts for job icons/recipe data) -- Universalis only ever deals in item IDs, never names, so
+  // there's nothing to display raw material rows with otherwise. Names are static game data (unlike
+  // prices), so this cache isn't keyed by world and is never invalidated.
+  var XIVAPI_ITEM_ORIGIN = 'https://xivapi.com/item';
+  var XIVAPI_CHUNK_SIZE = 100; // matches XIVAPI's own results-per-page cap for this endpoint
+  var ITEM_NAME_CACHE = {}; // { [itemId]: name }, only ever grows
+
+  function fetchItemNamesChunk(ids){
+    var url = XIVAPI_ITEM_ORIGIN + '?ids=' + ids.join(',') + '&columns=ID,Name&per_page=' + XIVAPI_CHUNK_SIZE;
+    return fetch(url).then(function(res){
+      if(!res.ok) throw new Error('XIVAPI item lookup failed with HTTP ' + res.status);
+      return res.json();
+    }).then(function(data){
+      var names = {};
+      (data.Results || []).forEach(function(item){ names[item.ID] = item.Name; });
+      return names;
+    });
+  }
+
+  // Resolves to { [itemId]: name } for whichever of the requested IDs XIVAPI recognized. Callers
+  // should tolerate a rejected promise or missing IDs gracefully (fall back to an ID-based label) --
+  // this is cosmetic, unlike a failed price fetch, so it should never take down the gil feature.
+  function fetchItemNames(itemIds){
+    var chunks = [];
+    for(var i = 0; i < itemIds.length; i += XIVAPI_CHUNK_SIZE){
+      chunks.push(itemIds.slice(i, i + XIVAPI_CHUNK_SIZE));
+    }
+    return Promise.all(chunks.map(fetchItemNamesChunk)).then(function(pages){
+      var merged = {};
+      pages.forEach(function(page){
+        Object.keys(page).forEach(function(id){ merged[id] = page[id]; });
+      });
+      return merged;
+    });
+  }
+
+  function itemDisplayName(itemId){
+    return ITEM_NAME_CACHE[itemId] || ('Item #' + itemId);
+  }
+
+  function teamcraftRawItemUrl(itemId){
+    var slug = itemDisplayName(itemId).replace(/\s+/g, '-');
+    return 'https://ffxivteamcraft.com/db/en/item/' + itemId + '/' + slug;
+  }
+
   // Every base item this run's turn-ins would need to price, under either buying strategy, across
   // every in-progress job -- the set actually fetched from Universalis.
   function collectGilItemIds(state){
@@ -1091,20 +1160,26 @@
   // silently priced at 0, so the UI can flag an estimate as incomplete instead of understating it.
   function jobGilBreakdown(job, acc, priceLookup){
     var buyCost = 0; var craftCost = 0; var missing = {};
+    var buyItems = {}; var craftItems = {}; // { [itemId]: total qty needed }, for the breakdown UI
     acc.order.forEach(function(label){
       var count = acc.counts[label];
       if(!count) return;
       var md = materialDemandFor(itemIdForLabel(job, label));
       md.topLevel.forEach(function(pair){
+        var qty = pair[1] * count;
+        buyItems[pair[0]] = (buyItems[pair[0]] || 0) + qty;
         var price = priceLookup(pair[0]);
-        if(price == null) missing[pair[0]] = true; else buyCost += price * pair[1] * count;
+        if(price == null) missing[pair[0]] = true; else buyCost += price * qty;
       });
       Object.keys(md.leaves).forEach(function(id){
+        var qty = md.leaves[id] * count;
+        craftItems[id] = (craftItems[id] || 0) + qty;
         var price = priceLookup(id);
-        if(price == null) missing[id] = true; else craftCost += price * md.leaves[id] * count;
+        if(price == null) missing[id] = true; else craftCost += price * qty;
       });
     });
-    return { buyCost: buyCost, craftCost: craftCost, missingCount: Object.keys(missing).length };
+    return { buyCost: buyCost, craftCost: craftCost, missingCount: Object.keys(missing).length,
+      buyItems: buyItems, craftItems: craftItems };
   }
 
   var jobGrid = document.getElementById('jobGrid');
@@ -1335,9 +1410,10 @@
 
     if(!GIL_PRICE_CACHE[world]) GIL_PRICE_CACHE[world] = {};
     var cache = GIL_PRICE_CACHE[world];
-    var missing = ids.filter(function(id){ return !(id in cache); });
+    var missingPrices = ids.filter(function(id){ return !(id in cache); });
+    var missingNames = ids.filter(function(id){ return !(id in ITEM_NAME_CACHE); });
 
-    if(!missing.length){
+    if(!missingPrices.length && !missingNames.length){
       marketStatus.textContent = '';
       marketStatus.classList.remove('market-error');
       renderGilResults(state, cards, world, cache);
@@ -1347,9 +1423,15 @@
     var token = ++gilFetchToken;
     marketStatus.textContent = 'Fetching market prices from Universalis...';
     marketStatus.classList.remove('market-error');
-    fetchPrices(world, missing).then(function(prices){
+    var pricePromise = missingPrices.length ? fetchPrices(world, missingPrices) : Promise.resolve({});
+    // Item names are cosmetic (the breakdown UI falls back to "Item #<id>"), so a name-lookup
+    // failure shouldn't take down the whole gil feature the way a price-lookup failure should.
+    var namePromise = missingNames.length ? fetchItemNames(missingNames).catch(function(){ return {}; })
+      : Promise.resolve({});
+    Promise.all([pricePromise, namePromise]).then(function(results){
       if(token !== gilFetchToken) return; // superseded by a newer world/input change
-      Object.keys(prices).forEach(function(id){ cache[id] = prices[id]; });
+      Object.keys(results[0]).forEach(function(id){ cache[id] = results[0][id]; });
+      Object.keys(results[1]).forEach(function(id){ ITEM_NAME_CACHE[id] = results[1][id]; });
       marketStatus.textContent = '';
       renderGilResults(state, cards, world, cache);
     }).catch(function(){
@@ -1360,6 +1442,26 @@
       gilBar.hidden = true;
       gilBar.innerHTML = '';
     });
+  }
+
+  // Renders one strategy's line items (sorted by display name) as rows of name / qty / unit price /
+  // subtotal, for the collapsible breakdown under each job's gil summary.
+  function renderGilBreakdownRows(itemsMap, priceLookup){
+    var ids = Object.keys(itemsMap);
+    if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
+    ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
+    return ids.map(function(id){
+      var qty = itemsMap[id];
+      var price = priceLookup(id);
+      var subtotal = price != null ? fmt(price * qty) + ' gil' : 'unpriced';
+      return '<div class="gil-breakdown-row">' +
+        '<a class="brk-name" href="' + teamcraftRawItemUrl(id) + '" target="_blank" rel="noopener">' +
+          itemDisplayName(id) + '</a>' +
+        '<span class="gil-breakdown-qty num">' + fmt(qty) + '&times;</span>' +
+        '<span class="gil-breakdown-price num">' + (price != null ? fmt(price) + ' ea' : '--') + '</span>' +
+        '<span class="gil-breakdown-subtotal num">' + subtotal + '</span>' +
+        '</div>';
+    }).join('');
   }
 
   function renderGilResults(state, cards, world, cache){
@@ -1381,7 +1483,18 @@
         '<span class="gil-item gil-savings">Est. savings: <b class="num">' + fmt(savings) + ' gil</b></span>' +
         (b.missingCount ? '<span class="gil-note">' + b.missingCount + ' item(s) have no current NQ ' +
           'listing on ' + world + ' -- treated as 0 gil.</span>' : '') +
-        '</div>';
+        '</div>' +
+        '<details class="gil-details">' +
+          '<summary>Price breakdown</summary>' +
+          '<div class="gil-breakdown-group">' +
+            '<div class="gil-breakdown-title">Buying components</div>' +
+            renderGilBreakdownRows(b.buyItems, priceLookup) +
+          '</div>' +
+          '<div class="gil-breakdown-group">' +
+            '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
+            renderGilBreakdownRows(b.craftItems, priceLookup) +
+          '</div>' +
+        '</details>';
     });
 
     if(!jobsShown){

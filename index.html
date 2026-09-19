@@ -104,6 +104,11 @@
     display:flex; align-items:center; gap:6px; font-size:.78rem; color: var(--ink-soft); cursor:pointer;
   }
   .craft-toggle input{ cursor:pointer; }
+  .craft-toggle-all{
+    font-size:.85rem; font-weight:600; color: var(--ink); background: var(--paper);
+    border:1px solid var(--line); border-radius:10px; padding:10px 14px; box-shadow: var(--shadow);
+    align-self:flex-start;
+  }
 
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
@@ -176,6 +181,11 @@
       craft and turn in to level 100 (or an earlier target level, if you set one).
     </p>
   </header>
+
+  <label class="craft-toggle craft-toggle-all">
+    <input type="checkbox" id="craftAllCheckbox"> Craft my own components (0% quality, recursively) --
+    all jobs
+  </label>
 
   <div class="summary-bar" id="summaryBar"></div>
 
@@ -914,6 +924,7 @@
   var jobGrid = document.getElementById('jobGrid');
   var summaryBar = document.getElementById('summaryBar');
   var consolidatedBar = document.getElementById('consolidatedBar');
+  var craftAllCheckbox = document.getElementById('craftAllCheckbox');
 
   JOB_ORDER.forEach(function(job){
     var card = document.createElement('div');
@@ -1047,6 +1058,12 @@
     });
     var state = simulateAllJobs(inputs);
 
+    // Keep the all-jobs toggle's checked/indeterminate state honest about what the 8 individual
+    // per-job toggles actually say, since they can also be flipped one at a time.
+    var craftOnCount = JOB_ORDER.filter(function(job){ return inputs[job].craftComponents; }).length;
+    craftAllCheckbox.checked = craftOnCount === JOB_ORDER.length;
+    craftAllCheckbox.indeterminate = craftOnCount > 0 && craftOnCount < JOB_ORDER.length;
+
     var grandTotal = 0;
     var jobsInProgress = 0;
     var perJobResults = [];
@@ -1175,6 +1192,15 @@
   // debounced since localStorage.setItem is synchronous and doesn't need to run on every keystroke.
   var saveDebounceTimer = null;
   jobGrid.addEventListener('input', function(){
+    recalcAll();
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(saveToLocalStorage, 400);
+  });
+
+  // Clicking while indeterminate (a mix of on/off) selects all, same as a native "select all" box.
+  craftAllCheckbox.addEventListener('input', function(){
+    var checked = craftAllCheckbox.checked;
+    jobGrid.querySelectorAll('[data-f="craftComponents"]').forEach(function(cb){ cb.checked = checked; });
     recalcAll();
     clearTimeout(saveDebounceTimer);
     saveDebounceTimer = setTimeout(saveToLocalStorage, 400);

@@ -152,6 +152,10 @@
   .gil-details[open] summary{ margin-bottom:6px; }
   .gil-breakdown-group{ margin-top:8px; max-width:100%; overflow-x:auto; }
   .gil-breakdown-group:first-of-type{ margin-top:0; }
+  /* The consolidated receipt sits full-width in .wrap (not a grid cell like a job card), so
+     instead of scrolling the table within the card, let the card itself grow past the page
+     width and scroll horizontally as a whole. */
+  .gil-receipt .gil-breakdown-group{ overflow-x:visible; }
   .gil-breakdown-title{
     font-size:.74rem; font-weight:600; color: var(--ink-soft); text-transform:uppercase;
     letter-spacing:.04em; margin-bottom:4px;

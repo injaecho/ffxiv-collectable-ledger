@@ -1118,13 +1118,14 @@
   // priced from the Universalis market board API (https://universalis.app) -- never the FFXIV
   // client itself. "Buying components" prices the collectable's own recipe ingredients as-is;
   // "crafting your own" prices only the raw materials at the bottom of the full ingredient tree
-  // (materialDemandFor). Both use each item's cheapest current NQ listing on the chosen world/data
-  // center as a simple point estimate -- it doesn't account for a single listing running out at
-  // that price, or for prices moving between when this loads and when you actually shop.
-  // Universalis's "aggregated" endpoint returns pre-computed cheapest-current-NQ-listing data (plus
-  // dc/region fallbacks) in well under a second even for a hundred-plus items -- the per-listing
-  // endpoint (/api/v2/{world}/{ids}) recomputes from raw listings per item server-side and measured
-  // over 15s (occasionally timing out entirely) for the ~90-item batches this tool needs.
+  // (materialDemandFor). Both price each item at its average recent NQ sale price on the chosen
+  // world/data center (see priceFromAggregatedEntry) -- it doesn't account for prices moving
+  // between when this loads and when you actually shop, but it's far steadier than pricing off
+  // whatever the single cheapest listing happens to be at that moment.
+  // Universalis's "aggregated" endpoint returns this pre-computed data (plus dc/region fallbacks)
+  // in well under a second even for a hundred-plus items -- the per-listing endpoint
+  // (/api/v2/{world}/{ids}) recomputes from raw listings per item server-side and measured over 15s
+  // (occasionally timing out entirely) for the ~90-item batches this tool needs.
   var UNIVERSALIS_AGGREGATED_ORIGIN = 'https://universalis.app/api/v2/aggregated/';
   var UNIVERSALIS_CHUNK_SIZE = 100; // Universalis accepts up to 100 comma-separated item IDs per call
   // Prices are persisted to localStorage and reused across page loads for PRICE_CACHE_TTL_MS before
@@ -1137,14 +1138,25 @@
   var GIL_PRICE_CACHE = {};
   var gilFetchToken = 0;
 
-  // A world query's minListing only has a "world" key; a data-center or region query only has "dc"
-  // or "region" -- picking the most specific one present lets this same code keep working
-  // regardless of scope. The dropdown UI always sends a plain world name, but the fallbacks are
-  // cheap to keep in case that ever changes (e.g. a future DC-wide pricing mode).
-  function priceFromAggregatedEntry(entry){
-    if(!entry || !entry.nq || !entry.nq.minListing) return null;
-    var scope = entry.nq.minListing.world || entry.nq.minListing.dc || entry.nq.minListing.region;
+  // A world query's fields only have a "world" key; a data-center or region query only has "dc" or
+  // "region" -- picking the most specific one present lets this same code keep working regardless
+  // of scope. The dropdown UI always sends a plain world name, but the fallbacks are cheap to keep
+  // in case that ever changes (e.g. a future DC-wide pricing mode).
+  function scopedPrice(field){
+    if(!field) return null;
+    var scope = field.world || field.dc || field.region;
     return (scope && scope.price != null && scope.price > 0) ? scope.price : null;
+  }
+
+  // The single cheapest current listing is an outlier magnet -- one accidental or stale underprice
+  // and the whole estimate is off. Universalis's averageSalePrice (the mean of recent actual NQ
+  // sales, already computed server-side) is a much steadier number, so it's preferred; the current
+  // cheapest listing is only a fallback for items with no recent sale history to average.
+  function priceFromAggregatedEntry(entry){
+    if(!entry || !entry.nq) return null;
+    var avg = scopedPrice(entry.nq.averageSalePrice);
+    if(avg != null) return Math.round(avg);
+    return scopedPrice(entry.nq.minListing);
   }
 
   function fetchPricesChunk(world, ids){

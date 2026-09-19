@@ -93,6 +93,19 @@
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
 
+  .exp-split{ display:flex; flex-direction:column; gap:6px; }
+  .exp-split-bar{
+    display:flex; height:6px; border-radius:4px; overflow:hidden; background: var(--paper-sunken);
+  }
+  .exp-split-bar .seg-turnin{ background: var(--teal); }
+  .exp-split-bar .seg-craft{ background: var(--accent); }
+  .exp-split-labels{ display:flex; gap:14px; flex-wrap:wrap; font-size:.76rem; color: var(--ink-soft); }
+  .exp-split-item{ display:flex; align-items:center; gap:5px; }
+  .exp-split-item b{ font-family:'IBM Plex Mono', monospace; color: var(--ink); font-weight:600; }
+  .dot{ width:8px; height:8px; border-radius:50%; flex:none; display:inline-block; }
+  .dot-turnin{ background: var(--teal); }
+  .dot-craft{ background: var(--accent); }
+
   .job-breakdown{ display:flex; flex-direction:column; gap:0; border-top:1px solid var(--line); padding-top:8px; }
   .brk-row{
     display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:.82rem;
@@ -287,6 +300,7 @@
     var simLevel = level;
     var preExp = 0;
     var counts = {}; var order = []; var totalTurnins = 0; var guard = 0;
+    var turnInExp = 0; var craftExp = 0;
 
     while(simLevel < target && guard < 100000){
       guard++;
@@ -300,7 +314,10 @@
       totalTurnins++;
       if(!(tier.label in counts)){ counts[tier.label] = 0; order.push(tier.label); }
       counts[tier.label]++;
-      remaining -= (tier.exp + craftCompletionExp(tier.level, simLevel));
+      var thisCraftExp = craftCompletionExp(tier.level, simLevel);
+      turnInExp += tier.exp;
+      craftExp += thisCraftExp;
+      remaining -= (tier.exp + thisCraftExp);
       while(remaining <= 0 && simLevel < target){
         simLevel++;
         if(simLevel >= target) break;
@@ -308,7 +325,8 @@
       }
     }
 
-    return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order, startLevel: level, target: target };
+    return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order,
+      startLevel: level, target: target, turnInExp: turnInExp, craftExp: craftExp };
   }
 
   var jobGrid = document.getElementById('jobGrid');
@@ -362,6 +380,19 @@
       (result.target !== 100 ? ' &rarr; target lv ' + result.target : '');
 
     var html = '';
+    if(result.totalTurnins > 0){
+      var expTotal = result.turnInExp + result.craftExp;
+      var turnInPct = expTotal > 0 ? Math.round(result.turnInExp / expTotal * 100) : 0;
+      var craftPct = 100 - turnInPct;
+      html += '<div class="exp-split">' +
+        '<div class="exp-split-bar"><span class="seg-turnin" style="width:' + turnInPct + '%"></span>' +
+          '<span class="seg-craft" style="width:' + craftPct + '%"></span></div>' +
+        '<div class="exp-split-labels">' +
+          '<span class="exp-split-item"><i class="dot dot-turnin"></i>Turn-ins <b class="num">' + fmt(result.turnInExp) + '</b> (' + turnInPct + '%)</span>' +
+          '<span class="exp-split-item"><i class="dot dot-craft"></i>Crafting <b class="num">' + fmt(result.craftExp) + '</b> (' + craftPct + '%)</span>' +
+        '</div>' +
+      '</div>';
+    }
     if(result.preExp > 0){
       html += '<div class="job-note">No collectable yet below level 81 -- Ishgardian Restoration (levels 21-80) is the recommended way to earn the roughly <b class="num">' +
         fmt(result.preExp) + '</b> EXP needed to get there, then switch to turn-ins below.</div>';
@@ -380,7 +411,8 @@
       '</div>';
     bodyEl.innerHTML = html;
 
-    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts };
+    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts,
+      turnInExp: result.turnInExp, craftExp: result.craftExp };
   }
 
   function buildCombinedGarlandImportLink(perJobResults){
@@ -398,6 +430,8 @@
     var jobsInProgress = 0;
     var perJobResults = [];
     var distinctItems = 0;
+    var grandTurnInExp = 0;
+    var grandCraftExp = 0;
     jobGrid.querySelectorAll('.job-card').forEach(function(card){
       var r = renderJob(card);
       grandTotal += r.totalTurnins;
@@ -405,11 +439,17 @@
         jobsInProgress++;
         perJobResults.push(r);
         distinctItems += r.order.length;
+        grandTurnInExp += r.turnInExp;
+        grandCraftExp += r.craftExp;
       }
     });
+    var grandExpTotal = grandTurnInExp + grandCraftExp;
+    var grandTurnInPct = grandExpTotal > 0 ? Math.round(grandTurnInExp / grandExpTotal * 100) : 0;
     summaryBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Jobs still leveling</span><span class="val num">' + jobsInProgress + ' / 8</span></div>' +
-      '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>';
+      '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>' +
+      '<div class="summary-item"><span class="lbl">EXP from turn-ins</span><span class="val num">' + fmt(grandTurnInExp) + ' (' + grandTurnInPct + '%)</span></div>' +
+      '<div class="summary-item"><span class="lbl">EXP from crafting</span><span class="val num">' + fmt(grandCraftExp) + ' (' + (100 - grandTurnInPct) + '%)</span></div>';
 
     if(perJobResults.length){
       var combinedUrl = buildCombinedGarlandImportLink(perJobResults);

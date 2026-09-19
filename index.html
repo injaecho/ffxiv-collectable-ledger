@@ -80,9 +80,10 @@
     font-family:'Spectral', serif; font-weight:600; font-size:1.08rem;
     display:inline-flex; align-items:center; gap:7px;
   }
-  .job-icon{ width:18px; height:18px; flex-shrink:0; color: var(--accent-ink); }
-  :root:not([data-theme="light"]) .job-icon{ color: var(--accent); }
-  :root[data-theme="dark"] .job-icon{ color: var(--accent); }
+  .job-icon{
+    width:22px; height:22px; flex-shrink:0; border-radius:5px; display:block;
+    border:1px solid var(--line);
+  }
   .job-total{ font-family:'IBM Plex Mono', monospace; font-size:.82rem; color: var(--ink-soft); }
   .job-total b{ color: var(--accent-ink); font-size:1rem; }
   :root:not([data-theme="light"]) .job-total b{ color: var(--accent); }
@@ -255,27 +256,12 @@
   };
   var JOB_ORDER = ["Carpenter","Blacksmith","Armorer","Goldsmith","Leatherworker","Weaver","Alchemist","Culinarian"];
 
-  // Simple line-art glyphs standing in for each Disciple of the Hand's tool -- not game assets.
-  var SVG_ICON_ATTRS = 'class="job-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
-    'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
-  var JOB_ICONS = {
-    Carpenter: '<svg ' + SVG_ICON_ATTRS + '><path d="M3 17 L14 6"/><path d="M14 6 L18 2"/>' +
-      '<path d="M5.5 14.5 L7 13 M8 11.5 L9.5 10 M10.5 8.5 L12 7"/></svg>',
-    Blacksmith: '<svg ' + SVG_ICON_ATTRS + '><rect x="2" y="2" width="7" height="5" rx="1"/>' +
-      '<path d="M7 6 L16 17"/></svg>',
-    Armorer: '<svg ' + SVG_ICON_ATTRS + '><path d="M10 2 L17 5 V10 C17 14 14 17.5 10 19 ' +
-      'C6 17.5 3 14 3 10 V5 Z"/><path d="M10 6 V13 M7 9.5 H13"/></svg>',
-    Goldsmith: '<svg ' + SVG_ICON_ATTRS + '><path d="M4 8 L7 3 H13 L16 8 L10 18 Z"/>' +
-      '<path d="M4 8 H16"/><path d="M7 3 L10 8 L13 3"/></svg>',
-    Leatherworker: '<svg ' + SVG_ICON_ATTRS + '><path d="M3 17 C3 10 8 4 17 3 C15 8 11 13 3 17 Z"/></svg>',
-    Weaver: '<svg ' + SVG_ICON_ATTRS + '><rect x="6" y="2" width="8" height="16" rx="2.5"/>' +
-      '<path d="M6 6.5 H14 M6 10 H14 M6 13.5 H14"/></svg>',
-    Alchemist: '<svg ' + SVG_ICON_ATTRS + '><path d="M8 2 H12 M8 2 V6 L3.5 15 C2.7 16.8 4 18.5 6 18.5 ' +
-      'H14 C16 18.5 17.3 16.8 16.5 15 L12 6 V2"/><path d="M6.5 12.5 H13.5"/></svg>',
-    Culinarian: '<svg ' + SVG_ICON_ATTRS + '><path d="M4 9 H16 L15 16.5 C15 17.5 14 18 13 18 H7 ' +
-      'C6 18 5 17.5 5 16.5 Z"/><path d="M4 9 C4 6.5 6.5 5 10 5 C13.5 5 16 6.5 16 9"/>' +
-      '<path d="M7 2 C7 3 8 3 8 4 M13 2 C13 3 14 3 14 4"/></svg>'
-  };
+  // Official class icons served by XIVAPI (https://xivapi.com/ClassJob), keyed by lowercase job name.
+  var JOB_ICONS = {};
+  JOB_ORDER.forEach(function(job){
+    JOB_ICONS[job] = '<img class="job-icon" src="https://xivapi.com/cj/1/' + job.toLowerCase() + '.png" ' +
+      'alt="" width="24" height="24" loading="lazy">';
+  });
 
   // Game item IDs for each Rarefied collectable (same IDs Garland Tools and TeamCraft both use).
   var ITEM_IDS = {

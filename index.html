@@ -114,12 +114,14 @@
   }
   .exp-split-bar .seg-turnin{ background: var(--teal); }
   .exp-split-bar .seg-craft{ background: var(--accent); }
+  .exp-split-bar .seg-component{ background: var(--rust); }
   .exp-split-labels{ display:flex; gap:14px; flex-wrap:wrap; font-size:.76rem; color: var(--ink-soft); }
   .exp-split-item{ display:flex; align-items:center; gap:5px; }
   .exp-split-item b{ font-family:'IBM Plex Mono', monospace; color: var(--ink); font-weight:600; }
   .dot{ width:8px; height:8px; border-radius:50%; flex:none; display:inline-block; }
   .dot-turnin{ background: var(--teal); }
   .dot-craft{ background: var(--accent); }
+  .dot-component{ background: var(--rust); }
 
   .job-breakdown{ display:flex; flex-direction:column; gap:0; border-top:1px solid var(--line); padding-top:8px; }
   .brk-row{
@@ -789,7 +791,7 @@
     var simLevel = level;
     var preExp = 0;
     var counts = {}; var order = []; var totalTurnins = 0; var guard = 0;
-    var turnInExp = 0; var craftExp = 0; var crossJobExpGiven = {};
+    var turnInExp = 0; var craftExp = 0; var componentCraftExp = 0; var crossJobExpGiven = {};
 
     while(simLevel < target && guard < 100000){
       guard++;
@@ -814,7 +816,8 @@
         });
       }
       turnInExp += tier.exp;
-      craftExp += thisCraftExp + componentExp;
+      craftExp += thisCraftExp;
+      componentCraftExp += componentExp;
       remaining -= (tier.exp + thisCraftExp + componentExp);
       while(remaining <= 0 && simLevel < target){
         simLevel++;
@@ -825,7 +828,7 @@
 
     return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order,
       startLevel: level, target: target, turnInExp: turnInExp, craftExp: craftExp,
-      crossJobExpGiven: crossJobExpGiven };
+      componentCraftExp: componentCraftExp, crossJobExpGiven: crossJobExpGiven };
   }
 
   var jobGrid = document.getElementById('jobGrid');
@@ -897,17 +900,25 @@
 
     var html = '';
     if(result.totalTurnins > 0){
-      var expTotal = result.turnInExp + result.craftExp;
+      var hasComponentExp = result.componentCraftExp > 0;
+      var expTotal = result.turnInExp + result.craftExp + result.componentCraftExp;
       var turnInPct = expTotal > 0 ? Math.round(result.turnInExp / expTotal * 100) : 0;
-      var craftPct = 100 - turnInPct;
+      var craftPct = expTotal > 0 ? Math.round(result.craftExp / expTotal * 100) : 0;
+      var componentPct = hasComponentExp ? 100 - turnInPct - craftPct : 0;
+      if(!hasComponentExp) craftPct = 100 - turnInPct;
       html += '<div class="exp-split">' +
         '<div class="exp-split-bar"><span class="seg-turnin" style="width:' + turnInPct + '%"></span>' +
-          '<span class="seg-craft" style="width:' + craftPct + '%"></span></div>' +
+          '<span class="seg-craft" style="width:' + craftPct + '%"></span>' +
+          (hasComponentExp ? '<span class="seg-component" style="width:' + componentPct + '%"></span>' : '') +
+          '</div>' +
         '<div class="exp-split-labels">' +
           '<span class="exp-split-item"><i class="dot dot-turnin"></i>Turn-ins <b class="num">' +
             fmt(result.turnInExp) + '</b> (' + turnInPct + '%)</span>' +
           '<span class="exp-split-item"><i class="dot dot-craft"></i>Crafting <b class="num">' +
             fmt(result.craftExp) + '</b> (' + craftPct + '%)</span>' +
+          (hasComponentExp ? '<span class="exp-split-item"><i class="dot dot-component"></i>' +
+            'Crafting (components) <b class="num">' + fmt(result.componentCraftExp) + '</b> (' +
+            componentPct + '%)</span>' : '') +
         '</div>' +
       '</div>';
     }
@@ -937,7 +948,7 @@
     bodyEl.innerHTML = html;
 
     return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts,
-      turnInExp: result.turnInExp, craftExp: result.craftExp };
+      turnInExp: result.turnInExp, craftExp: result.craftExp, componentCraftExp: result.componentCraftExp };
   }
 
   function buildCombinedGarlandImportLink(perJobResults){
@@ -979,6 +990,7 @@
     var distinctItems = 0;
     var grandTurnInExp = 0;
     var grandCraftExp = 0;
+    var grandComponentCraftExp = 0;
     entries.forEach(function(entry){
       var r = paintJob(entry, crossJobExpReceived[JOB_ABBR[entry.job]] || 0);
       grandTotal += r.totalTurnins;
@@ -988,11 +1000,15 @@
         distinctItems += r.order.length;
         grandTurnInExp += r.turnInExp;
         grandCraftExp += r.craftExp;
+        grandComponentCraftExp += r.componentCraftExp;
       }
     });
-    var grandExpTotal = grandTurnInExp + grandCraftExp;
+    var hasGrandComponentExp = grandComponentCraftExp > 0;
+    var grandExpTotal = grandTurnInExp + grandCraftExp + grandComponentCraftExp;
     var grandTurnInPct = grandExpTotal > 0 ? Math.round(grandTurnInExp / grandExpTotal * 100) : 0;
-    var grandCraftPct = grandExpTotal > 0 ? (100 - grandTurnInPct) : 0;
+    var grandCraftPct = grandExpTotal > 0 ? Math.round(grandCraftExp / grandExpTotal * 100) : 0;
+    var grandComponentPct = hasGrandComponentExp ? 100 - grandTurnInPct - grandCraftPct : 0;
+    if(!hasGrandComponentExp) grandCraftPct = 100 - grandTurnInPct;
     summaryBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Jobs still leveling</span>' +
         '<span class="val num">' + jobsInProgress + ' / 8</span></div>' +
@@ -1001,7 +1017,9 @@
       '<div class="summary-item"><span class="lbl">EXP from turn-ins</span>' +
         '<span class="val num">' + fmt(grandTurnInExp) + ' (' + grandTurnInPct + '%)</span></div>' +
       '<div class="summary-item"><span class="lbl">EXP from crafting</span>' +
-        '<span class="val num">' + fmt(grandCraftExp) + ' (' + grandCraftPct + '%)</span></div>';
+        '<span class="val num">' + fmt(grandCraftExp) + ' (' + grandCraftPct + '%)</span></div>' +
+      (hasGrandComponentExp ? '<div class="summary-item"><span class="lbl">EXP from crafting (components)</span>' +
+        '<span class="val num">' + fmt(grandComponentCraftExp) + ' (' + grandComponentPct + '%)</span></div>' : '');
 
     if(perJobResults.length){
       var combinedUrl = buildCombinedGarlandImportLink(perJobResults);

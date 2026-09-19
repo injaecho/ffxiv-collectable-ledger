@@ -219,6 +219,7 @@
     border-radius:7px; padding:6px 10px; cursor:pointer;
   }
   .copy-btn:hover{ background: color-mix(in srgb, var(--teal) 18%, var(--teal-soft)); }
+  .copy-btn:disabled{ opacity:.6; cursor:not-allowed; }
   .copy-flag{ font-size:.76rem; color: var(--teal); font-weight:600; }
   .list-link{
     font-size:.78rem; color: var(--ink-soft); text-decoration:none;
@@ -268,6 +269,7 @@
     <select id="worldSelect" aria-label="World" disabled>
       <option value="">Choose a data center first</option>
     </select>
+    <button type="button" class="copy-btn" id="fetchGilPricesBtn" hidden>Fetch gil prices</button>
     <span class="market-status" id="marketStatus"></span>
   </div>
 
@@ -1127,7 +1129,14 @@
   // over 15s (occasionally timing out entirely) for the ~90-item batches this tool needs.
   var UNIVERSALIS_AGGREGATED_ORIGIN = 'https://universalis.app/api/v2/aggregated/';
   var UNIVERSALIS_CHUNK_SIZE = 100; // Universalis accepts up to 100 comma-separated item IDs per call
-  var GIL_PRICE_CACHE = {}; // { [world]: { [itemId]: price|null } }, null = no current NQ listing
+  // Prices are persisted to localStorage and reused across page loads for PRICE_CACHE_TTL_MS before
+  // being treated as stale and re-fetched -- market prices don't meaningfully change minute to
+  // minute for a leveling-cost estimate, and reloading the page during dev (or just re-visiting the
+  // site) shouldn't re-fetch everything from Universalis every single time.
+  // { [world]: { fetchedAt: <ms epoch>, prices: { [itemId]: price|null } } }, null = no current NQ
+  // listing. Loaded once at boot below (after loadPriceCacheFromLocalStorage is declared).
+  var PRICE_CACHE_TTL_MS = 10 * 60 * 1000;
+  var GIL_PRICE_CACHE = {};
   var gilFetchToken = 0;
 
   // A world query's minListing only has a "world" key; a data-center or region query only has "dc"
@@ -1143,7 +1152,11 @@
   function fetchPricesChunk(world, ids){
     var url = UNIVERSALIS_AGGREGATED_ORIGIN + encodeURIComponent(world) + '/' + ids.join(',');
     return fetch(url).then(function(res){
-      if(!res.ok) throw new Error('Universalis request failed with HTTP ' + res.status);
+      if(!res.ok){
+        var err = new Error('Universalis request failed with HTTP ' + res.status);
+        err.status = res.status; // read by updateGilSavings to show a specific 429 message
+        throw err;
+      }
       return res.json();
     }).then(function(data){
       var prices = {};
@@ -1279,6 +1292,9 @@
   var dcSelect = document.getElementById('dcSelect');
   var worldSelect = document.getElementById('worldSelect');
   var marketStatus = document.getElementById('marketStatus');
+  var fetchGilPricesBtn = document.getElementById('fetchGilPricesBtn');
+  var lastGilState = null; // set by every recalcAll, reused by the fetch button so it doesn't
+  var lastGilCards = null; // need to recompute the whole leveling simulation just to fetch prices
   var gatherOwnCheckbox = document.getElementById('gatherOwnCheckbox');
   var gatherSubToggles = document.getElementById('gatherSubToggles');
   var gatherTimedCheckbox = document.getElementById('gatherTimedCheckbox');
@@ -1504,13 +1520,15 @@
     updateGilSavings(state, cards);
   }
 
-  // Fills in each job's gil-cost comparison and the grand-total gilBar once Universalis prices are
-  // available. Called at the end of every recalcAll -- cheap to call on every keystroke since it
-  // only ever fetches item IDs it doesn't already have cached for the current world/DC; changing a
-  // level or target rarely changes which items are needed, so most calls hit the cache and touch
-  // the network not at all.
+  // Render-only: fills in each job's gil-cost comparison and the grand-total gilBar from whatever
+  // Universalis data is ALREADY cached, and never itself triggers a network request -- that only
+  // happens when the "Fetch gil prices" button is clicked (see fetchGilPrices below). Called at the
+  // end of every recalcAll and on every world/DC change, so toggling "gather my own materials" or
+  // editing a level updates the numbers instantly from cache without re-hitting Universalis.
   function updateGilSavings(state, cards){
+    lastGilState = state; lastGilCards = cards;
     var world = worldSelect.value;
+    fetchGilPricesBtn.hidden = !world;
     if(!world){
       gilBar.hidden = true;
       gilBar.innerHTML = '';
@@ -1530,9 +1548,49 @@
       return;
     }
 
-    if(!GIL_PRICE_CACHE[world]) GIL_PRICE_CACHE[world] = {};
-    var cache = GIL_PRICE_CACHE[world];
-    var missingPrices = ids.filter(function(id){ return !(id in cache); });
+    var cacheEntry = GIL_PRICE_CACHE[world];
+    if(cacheEntry && Object.keys(cacheEntry.prices).length){
+      renderGilResults(state, cards, world, cacheEntry.prices);
+    } else {
+      gilBar.hidden = true;
+      gilBar.innerHTML = '';
+      JOB_ORDER.forEach(function(job){
+        var el = cards[job].querySelector('[data-r="gil"]');
+        if(el) el.innerHTML = '';
+      });
+    }
+
+    if(marketStatus.classList.contains('market-error')) return; // leave a fetch error visible
+    if(!cacheEntry || !cacheEntry.fetchedAt){
+      marketStatus.textContent = 'Click "Fetch gil prices" to load Universalis prices for ' + world + '.';
+    } else if((Date.now() - cacheEntry.fetchedAt) >= PRICE_CACHE_TTL_MS){
+      marketStatus.textContent = 'Prices for ' + world + ' are more than 10 minutes old -- click ' +
+        '"Fetch gil prices" to refresh.';
+    } else if(ids.some(function(id){ return !(id in cacheEntry.prices); })){
+      marketStatus.textContent = 'Some items still need prices -- click "Fetch gil prices" to load them.';
+    } else {
+      marketStatus.textContent = '';
+    }
+  }
+
+  // The only place that actually talks to Universalis -- triggered solely by clicking "Fetch gil
+  // prices", never automatically, so switching worlds or tweaking a level doesn't spam the API. Uses
+  // whatever recalcAll last computed (lastGilState/lastGilCards) rather than re-running the whole
+  // leveling simulation just to know which item IDs to price.
+  function fetchGilPrices(){
+    var world = worldSelect.value;
+    if(!world || !lastGilState) return;
+    var state = lastGilState; var cards = lastGilCards;
+    var ids = collectGilItemIds(state);
+    if(!ids.length) return;
+
+    if(!GIL_PRICE_CACHE[world]) GIL_PRICE_CACHE[world] = { fetchedAt: 0, prices: {} };
+    var cacheEntry = GIL_PRICE_CACHE[world];
+    var cache = cacheEntry.prices;
+    var fresh = (Date.now() - cacheEntry.fetchedAt) < PRICE_CACHE_TTL_MS;
+    // A stale cache re-fetches every item for this world (prices may have moved), not just ones
+    // never seen before; a fresh cache only fetches genuinely new ones.
+    var missingPrices = fresh ? ids.filter(function(id){ return !(id in cache); }) : ids.slice();
     var missingNames = ids.filter(function(id){ return !(id in ITEM_NAME_CACHE); });
 
     if(!missingPrices.length && !missingNames.length){
@@ -1543,6 +1601,7 @@
     }
 
     var token = ++gilFetchToken;
+    fetchGilPricesBtn.disabled = true;
     marketStatus.textContent = 'Fetching market prices from Universalis...';
     marketStatus.classList.remove('market-error');
     var pricePromise = missingPrices.length ? fetchPrices(world, missingPrices) : Promise.resolve({});
@@ -1551,18 +1610,23 @@
     var namePromise = missingNames.length ? fetchItemNames(missingNames).catch(function(){ return {}; })
       : Promise.resolve({});
     Promise.all([pricePromise, namePromise]).then(function(results){
-      if(token !== gilFetchToken) return; // superseded by a newer world/input change
+      if(token !== gilFetchToken) return; // superseded by a newer fetch
       Object.keys(results[0]).forEach(function(id){ cache[id] = results[0][id]; });
       Object.keys(results[1]).forEach(function(id){ ITEM_NAME_CACHE[id] = results[1][id]; });
+      if(missingPrices.length){
+        cacheEntry.fetchedAt = Date.now();
+        savePriceCacheToLocalStorage();
+      }
+      fetchGilPricesBtn.disabled = false;
       marketStatus.textContent = '';
       renderGilResults(state, cards, world, cache);
-    }).catch(function(){
+    }).catch(function(err){
       if(token !== gilFetchToken) return;
-      marketStatus.textContent = 'Could not fetch prices for "' + world + '" -- check your connection ' +
-        'and try again.';
+      fetchGilPricesBtn.disabled = false;
+      marketStatus.textContent = (err && err.status === 429)
+        ? 'Universalis is rate-limiting this session -- wait a bit before trying again.'
+        : 'Could not fetch prices for "' + world + '" -- check your connection and try again.';
       marketStatus.classList.add('market-error');
-      gilBar.hidden = true;
-      gilBar.innerHTML = '';
     });
   }
 
@@ -1661,7 +1725,7 @@
 
   document.body.addEventListener('click', function(e){
     var btn = e.target.closest('.copy-btn');
-    if(!btn) return;
+    if(!btn || !btn.dataset.copy) return; // e.g. fetchGilPricesBtn shares the look, not the behavior
     var url = btn.dataset.copy;
     var flag = btn.nextElementSibling;
     var showCopied = function(){
@@ -1807,6 +1871,21 @@
     }
   }
 
+  var PRICE_CACHE_STORAGE_KEY = 'ffxiv-collectable-ledger-price-cache-v1';
+  function savePriceCacheToLocalStorage(){
+    try{ localStorage.setItem(PRICE_CACHE_STORAGE_KEY, JSON.stringify(GIL_PRICE_CACHE)); }
+    catch(e){ console.warn('Could not save the Universalis price cache to this browser:', e); }
+  }
+  function loadPriceCacheFromLocalStorage(){
+    try{
+      var raw = localStorage.getItem(PRICE_CACHE_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      console.warn('Could not load the saved Universalis price cache (corrupted or blocked storage):', e);
+      return {};
+    }
+  }
+
   // Universalis's DC/world lists are metadata, not per-item prices -- fetched once on load, not
   // per keystroke, so unlike the old free-text field there's no debounce to worry about here: a
   // <select> fires one change event per pick, not a stream of keystrokes, so each pick just
@@ -1898,6 +1977,7 @@
     recalcAll();
     saveWorldToLocalStorage();
   });
+  fetchGilPricesBtn.addEventListener('click', fetchGilPrices);
 
   function updateGatherSubTogglesVisibility(){
     gatherSubToggles.hidden = !gatherOwnCheckbox.checked;
@@ -1932,6 +2012,7 @@
     updateGatherSubTogglesVisibility();
   })();
   GATHER_ITEM_OVERRIDES = loadGatherOverridesFromLocalStorage();
+  GIL_PRICE_CACHE = loadPriceCacheFromLocalStorage();
 
   // Delegated because the breakdown table (and every checkbox in it) is fully rebuilt by every
   // recalcAll -- a listener bound to a specific checkbox would be destroyed along with it. Attached

@@ -136,7 +136,7 @@
 
   <div class="job-grid" id="jobGrid"></div>
 
-  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it.</p>
+  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it. The turn-in reward isn't the only EXP a cycle gives, though: crafting the item itself also grants ordinary completion EXP, boosted by rested EXP, being under-leveled, and other bonuses. That amount is too buff-dependent (and depletes as rested EXP runs out) to model exactly, so "Craft EXP bonus" lets you add whatever you're actually seeing per craft on top of the turn-in reward -- check your EXP gain after a synthesis and update it as your buffs change.</p>
 
   <footer>
     Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item.
@@ -247,11 +247,14 @@
 
   // Simulates turn-in by turn-in from (level, exp) to the target level, carrying leftover EXP
   // forward and switching to a better-paying collectable the instant it unlocks. Levels below 81
-  // have no collectable yet, so that stretch is tallied separately as plain EXP.
-  function computeForJob(job, level, exp, target){
+  // have no collectable yet, so that stretch is tallied separately as plain EXP. craftBonus is an
+  // optional flat amount of EXP the *act of crafting* the item itself grants (separate from the
+  // appraiser's collectability reward), added on top of every turn-in.
+  function computeForJob(job, level, exp, target, craftBonus){
     var tiers = tiersFor(job);
     level = Math.max(1, Math.min(100, Math.round(level) || 1));
     target = Math.max(1, Math.min(100, Math.round(target) || 100));
+    craftBonus = Math.max(0, craftBonus || 0);
     if(level >= target){ return { done: true, alreadyThere: true, target: target }; }
 
     var expAtCur = EXP_TO_NEXT[level] || 0;
@@ -272,7 +275,7 @@
       totalTurnins++;
       if(!(tier.label in counts)){ counts[tier.label] = 0; order.push(tier.label); }
       counts[tier.label]++;
-      remaining -= tier.exp;
+      remaining -= (tier.exp + craftBonus);
       while(remaining <= 0 && simLevel < target){
         simLevel++;
         if(simLevel >= target) break;
@@ -296,7 +299,10 @@
       '<div class="job-inputs">' +
         '<div class="field"><label>Current level</label><input type="number" min="1" max="100" value="' + ex[0] + '" data-f="level"></div>' +
         '<div class="field"><label>Current EXP</label><input type="number" min="0" step="1" value="' + ex[1] + '" data-f="exp"></div>' +
+      '</div>' +
+      '<div class="job-inputs">' +
         '<div class="field"><label>Target lv <span class="opt">(optional)</span></label><input type="number" min="2" max="100" placeholder="100" data-f="target"></div>' +
+        '<div class="field"><label>Craft EXP bonus <span class="opt">(optional)</span></label><input type="number" min="0" step="1" placeholder="0" data-f="craftBonus"></div>' +
       '</div>' +
       '<div class="job-progress" data-r="progress"></div>' +
       '<div data-r="body"></div>';
@@ -308,13 +314,15 @@
     var levelInput = card.querySelector('[data-f="level"]');
     var expInput = card.querySelector('[data-f="exp"]');
     var targetInput = card.querySelector('[data-f="target"]');
+    var craftBonusInput = card.querySelector('[data-f="craftBonus"]');
     var level = parseFloat(levelInput.value) || 1;
     var expAtCur = EXP_TO_NEXT[Math.max(1, Math.min(100, Math.round(level)))] || 0;
     var exp = Math.max(0, Math.min(expAtCur, parseFloat(expInput.value) || 0));
     var targetRaw = parseFloat(targetInput.value);
     var target = targetRaw ? targetRaw : 100;
+    var craftBonus = Math.max(0, parseFloat(craftBonusInput.value) || 0);
 
-    var result = computeForJob(job, level, exp, target);
+    var result = computeForJob(job, level, exp, target, craftBonus);
     var totalEl = card.querySelector('[data-r="total"]');
     var progressEl = card.querySelector('[data-r="progress"]');
     var bodyEl = card.querySelector('[data-r="body"]');
@@ -330,7 +338,8 @@
 
     totalEl.innerHTML = '<b class="num">' + fmt(result.totalTurnins) + '</b> turn-ins';
     progressEl.innerHTML = fmt(exp) + ' / ' + fmt(expAtCur) + ' EXP in level ' + result.startLevel +
-      (result.target !== 100 ? ' &rarr; target lv ' + result.target : '');
+      (result.target !== 100 ? ' &rarr; target lv ' + result.target : '') +
+      (craftBonus > 0 ? ' &middot; +' + fmt(craftBonus) + ' craft EXP/turn-in included' : '');
 
     var html = '';
     if(result.preExp > 0){
@@ -405,7 +414,8 @@
       state[card.dataset.job] = {
         level: card.querySelector('[data-f="level"]').value,
         exp: card.querySelector('[data-f="exp"]').value,
-        target: card.querySelector('[data-f="target"]').value
+        target: card.querySelector('[data-f="target"]').value,
+        craftBonus: card.querySelector('[data-f="craftBonus"]').value
       };
     });
     return state;
@@ -418,6 +428,7 @@
         card.querySelector('[data-f="level"]').value = s.level;
         card.querySelector('[data-f="exp"]').value = s.exp;
         card.querySelector('[data-f="target"]').value = s.target || '';
+        card.querySelector('[data-f="craftBonus"]').value = s.craftBonus || '';
       });
     }
     recalcAll();

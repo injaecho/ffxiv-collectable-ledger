@@ -1311,7 +1311,11 @@
         // leaves always includes it too) -- list it there only, not duplicated here as well. Its
         // cost still counts toward buyCost, same as always; only the displayed row is skipped.
         if(hasRecipe) buyItems[itemId] = (buyItems[itemId] || 0) + qty;
-        var craftThis = hasRecipe && !!CRAFT_COMPONENT_OVERRIDES[itemId];
+        // Defaults to this job's own "Craft my own components" state (on for every component when
+        // that's checked, matching what turning it on implies) unless a player has explicitly
+        // touched this exact component's checkbox, which always wins regardless of that toggle.
+        var craftThis = hasRecipe &&
+          (itemId in CRAFT_COMPONENT_OVERRIDES ? CRAFT_COMPONENT_OVERRIDES[itemId] : craftEnabled);
         if(craftThis){
           if(!(itemId in buyItemUnitCost)){
             buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);
@@ -1361,11 +1365,11 @@
   // actually unticks/reticks a row, so most items never get an entry here at all.
   var GATHER_ITEM_OVERRIDES = {};
 
-  // Per-component choice in the "buying/crafting components" table: true means that component's
-  // cost is recursively priced from its own raw materials (see craftCostPerUnit) instead of bought
-  // at its own market price. Only ever set for items that actually have a recipe of their own
-  // (RECIPE_TREE) -- a genuine raw material used directly as a top-level ingredient has nothing to
-  // "craft" and never gets an entry here. Defaults to buying, matching the table's baseline meaning.
+  // Explicit per-component exceptions in the "buying/crafting components" table: true/false means a
+  // player has directly ticked/unticked that exact component's checkbox, which wins regardless of
+  // the job's own "Craft my own components" state. An item with no entry here just follows that
+  // job's toggle instead (see jobGilBreakdown) -- so checking it defaults every component to
+  // "craft," matching what turning it on implies, without needing to write an entry for each one.
   var CRAFT_COMPONENT_OVERRIDES = {};
 
   // Builds the current isFreeGathered(itemId) predicate from the gather toggles' live checked

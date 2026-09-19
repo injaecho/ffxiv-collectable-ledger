@@ -1270,7 +1270,11 @@
   // definition already a crafted/bought item, not something you'd gather. A gathered-free item still
   // counts toward craftItems (so it still shows in the breakdown, just at 0 gil) and never counts as
   // "missing" even if its price is unknown, since we're not going to price it either way.
-  function jobGilBreakdown(job, acc, priceLookup, isFreeGathered){
+  // craftEnabled mirrors this job's own "Craft my own components" checkbox: when it's off, the
+  // simulation already assumes every component is bought, so pricing a "craft it yourself" path
+  // for raw materials that were never going to be gathered is a number nobody asked for -- skip it
+  // entirely rather than compute and then hide it.
+  function jobGilBreakdown(job, acc, priceLookup, isFreeGathered, craftEnabled){
     var buyCost = 0; var craftCost = 0; var missing = {};
     var buyItems = {}; var craftItems = {}; // { [itemId]: total qty needed }, for the breakdown UI
     acc.order.forEach(function(label){
@@ -1283,6 +1287,7 @@
         var price = priceLookup(pair[0]);
         if(price == null) missing[pair[0]] = true; else buyCost += price * qty;
       });
+      if(!craftEnabled) return;
       Object.keys(md.leaves).forEach(function(id){
         var qty = md.leaves[id] * count;
         craftItems[id] = (craftItems[id] || 0) + qty;
@@ -1685,7 +1690,7 @@
   function renderGilResults(state, cards, world, cache){
     var priceLookup = function(id){ var v = cache[id]; return v === undefined ? null : v; };
     var isFreeGathered = currentIsFreeGathered();
-    var totalBuy = 0; var totalCraft = 0; var totalMissing = 0; var jobsShown = 0;
+    var totalBuy = 0; var totalCraft = 0; var totalMissing = 0; var jobsShown = 0; var anyCraftEnabled = false;
 
     JOB_ORDER.forEach(function(job){
       var s = state[job];
@@ -1693,13 +1698,17 @@
       if(!el) return;
       if(!s || s.startedDone || s.acc.totalTurnins === 0){ el.innerHTML = ''; return; }
 
-      var b = jobGilBreakdown(job, s.acc, priceLookup, isFreeGathered);
+      var craftEnabled = !!s.craftComponents;
+      if(craftEnabled) anyCraftEnabled = true;
+      var b = jobGilBreakdown(job, s.acc, priceLookup, isFreeGathered, craftEnabled);
       totalBuy += b.buyCost; totalCraft += b.craftCost; totalMissing += b.missingCount; jobsShown++;
       var savings = b.buyCost - b.craftCost;
       el.innerHTML = '<div class="gil-row">' +
         '<span class="gil-item">Buying components: <b class="num">' + fmt(b.buyCost) + ' gil</b></span>' +
-        '<span class="gil-item">Crafting your own: <b class="num">' + fmt(b.craftCost) + ' gil</b></span>' +
-        '<span class="gil-item gil-savings">Est. savings: <b class="num">' + fmt(savings) + ' gil</b></span>' +
+        (craftEnabled ? '<span class="gil-item">Crafting your own: <b class="num">' + fmt(b.craftCost) +
+          ' gil</b></span>' +
+          '<span class="gil-item gil-savings">Est. savings: <b class="num">' + fmt(savings) +
+          ' gil</b></span>' : '') +
         (b.missingCount ? '<span class="gil-note">' + b.missingCount + ' item(s) have no current NQ ' +
           'listing on ' + world + ' -- treated as 0 gil.</span>' : '') +
         '</div>' +
@@ -1709,11 +1718,11 @@
             '<div class="gil-breakdown-title">Buying components</div>' +
             renderGilBreakdownRows(b.buyItems, priceLookup, world, b.buyCost) +
           '</div>' +
-          '<div class="gil-breakdown-group">' +
+          (craftEnabled ? '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
             renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered,
               gatherOwnCheckbox.checked) +
-          '</div>' +
+          '</div>' : '') +
         '</details>';
     });
 
@@ -1727,10 +1736,10 @@
     gilBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Buying every component (' + world + ')</span>' +
         '<span class="val num">' + fmt(totalBuy) + ' gil</span></div>' +
-      '<div class="summary-item"><span class="lbl">Crafting your own components</span>' +
+      (anyCraftEnabled ? '<div class="summary-item"><span class="lbl">Crafting your own components</span>' +
         '<span class="val num">' + fmt(totalCraft) + ' gil</span></div>' +
-      '<div class="summary-item"><span class="lbl">Estimated gil saved</span>' +
-        '<span class="val num">' + fmt(totalBuy - totalCraft) + ' gil</span></div>' +
+        '<div class="summary-item"><span class="lbl">Estimated gil saved</span>' +
+        '<span class="val num">' + fmt(totalBuy - totalCraft) + ' gil</span></div>' : '') +
       (totalMissing ? '<div class="summary-item"><span class="lbl">Unpriced items</span>' +
         '<span class="val num">' + totalMissing + '</span></div>' : '');
   }

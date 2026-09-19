@@ -267,7 +267,7 @@
       <option value="">Loading data centers...</option>
     </select>
     <select id="worldSelect" aria-label="World" disabled>
-      <option value="">Choose a data center first</option>
+      <option value="">Choose a world...</option>
     </select>
     <button type="button" class="copy-btn" id="fetchGilPricesBtn" hidden>Fetch gil prices</button>
     <span class="market-status" id="marketStatus"></span>
@@ -1906,7 +1906,7 @@
   function populateWorldSelect(dcName, preselectWorld){
     var dc = DATA_CENTERS.filter(function(d){ return d.name === dcName; })[0];
     if(!dc){
-      worldSelect.innerHTML = optionsHtml('Choose a data center first', []);
+      worldSelect.innerHTML = optionsHtml('Choose a world...', []);
       worldSelect.disabled = true;
       return;
     }
@@ -1923,7 +1923,7 @@
       dcSelect.value = savedDc;
       populateWorldSelect(savedDc, loadWorldFromLocalStorage());
     } else {
-      worldSelect.innerHTML = optionsHtml('Choose a data center first', []);
+      worldSelect.innerHTML = optionsHtml('Choose a world...', []);
       worldSelect.disabled = true;
     }
     // Setting .value above doesn't fire a change event, so the restored selection needs an

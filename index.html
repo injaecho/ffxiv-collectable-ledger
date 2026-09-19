@@ -63,6 +63,9 @@
   :root:not([data-theme="light"]) .summary-item .val{ color: var(--accent); }
   :root[data-theme="dark"] .summary-item .val{ color: var(--accent); }
 
+  .consolidated-bar{ flex-direction:column; align-items:flex-start; gap:10px; border-color: var(--accent); }
+  .consolidated-bar .summary-item .val{ font-size:1.05rem; }
+
   .job-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; }
 
   .job-card{
@@ -135,6 +138,8 @@
   <div class="summary-bar" id="summaryBar"></div>
 
   <div class="job-grid" id="jobGrid"></div>
+
+  <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
 
   <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it.</p>
 
@@ -285,6 +290,7 @@
 
   var jobGrid = document.getElementById('jobGrid');
   var summaryBar = document.getElementById('summaryBar');
+  var consolidatedBar = document.getElementById('consolidatedBar');
 
   JOB_ORDER.forEach(function(job){
     var card = document.createElement('div');
@@ -351,25 +357,56 @@
       '</div>';
     bodyEl.innerHTML = html;
 
-    return { totalTurnins: result.totalTurnins };
+    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts };
+  }
+
+  function buildCombinedGarlandImportLink(perJobResults){
+    var parts = [];
+    perJobResults.forEach(function(r){
+      r.order.forEach(function(label){
+        parts.push('item/' + itemIdForLabel(r.job, label) + '+' + r.counts[label]);
+      });
+    });
+    return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
   }
 
   function recalcAll(){
     var grandTotal = 0;
     var jobsInProgress = 0;
+    var perJobResults = [];
+    var distinctItems = 0;
     jobGrid.querySelectorAll('.job-card').forEach(function(card){
       var r = renderJob(card);
       grandTotal += r.totalTurnins;
-      if(r.totalTurnins > 0) jobsInProgress++;
+      if(r.totalTurnins > 0){
+        jobsInProgress++;
+        perJobResults.push(r);
+        distinctItems += r.order.length;
+      }
     });
     summaryBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Jobs still leveling</span><span class="val num">' + jobsInProgress + ' / 8</span></div>' +
       '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>';
+
+    if(perJobResults.length){
+      var combinedUrl = buildCombinedGarlandImportLink(perJobResults);
+      consolidatedBar.hidden = false;
+      consolidatedBar.innerHTML =
+        '<div class="summary-item"><span class="lbl">All jobs, one list</span><span class="val num">' +
+          distinctItems + ' items &middot; ' + fmt(grandTotal) + ' turn-ins</span></div>' +
+        '<div class="import-row">' +
+          '<button type="button" class="copy-btn" data-copy="' + combinedUrl.replace(/"/g, '&quot;') + '">Copy consolidated Teamcraft import link</button>' +
+          '<span class="copy-flag" hidden>Copied!</span>' +
+        '</div>';
+    } else {
+      consolidatedBar.hidden = true;
+      consolidatedBar.innerHTML = '';
+    }
   }
 
   jobGrid.addEventListener('input', recalcAll);
 
-  jobGrid.addEventListener('click', function(e){
+  document.body.addEventListener('click', function(e){
     var btn = e.target.closest('.copy-btn');
     if(!btn) return;
     var url = btn.dataset.copy;

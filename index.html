@@ -1782,6 +1782,10 @@
       var b = jobGilBreakdown(job, s.acc, priceLookup, isFreeGathered, craftEnabled);
       totalBuy += b.buyCost; totalCraft += b.craftCost; totalMissing += b.missingCount; jobsShown++;
       var savings = b.buyCost - b.craftCost;
+      // Every gather/craft checkbox click re-renders this whole element (the numbers may have
+      // changed), which would otherwise silently re-collapse the <details> -- a freshly-parsed one
+      // has no "open" attribute -- right out from under whoever just clicked something inside it.
+      var wasOpen = el.querySelector('.gil-details') && el.querySelector('.gil-details').open;
       el.innerHTML = '<div class="gil-row">' +
         '<span class="gil-item">Buying components: <b class="num">' + fmt(b.buyCost) + ' gil</b></span>' +
         (craftEnabled ? '<span class="gil-item">Crafting your own: <b class="num">' + fmt(b.craftCost) +
@@ -1791,7 +1795,7 @@
         (b.missingCount ? '<span class="gil-note">' + b.missingCount + ' item(s) have no current NQ ' +
           'listing on ' + world + ' -- treated as 0 gil.</span>' : '') +
         '</div>' +
-        '<details class="gil-details">' +
+        '<details class="gil-details"' + (wasOpen ? ' open' : '') + '>' +
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/crafting components</div>' +

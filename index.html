@@ -1913,6 +1913,19 @@
       '</details>';
   }
 
+  // "toggle" doesn't bubble, so this has to listen during the capture phase to catch it via
+  // delegation (every .gil-details is re-created by innerHTML on each render, so it can't just
+  // attach a listener to the elements themselves once). Opening a job-card's breakdown collapses
+  // the whole job grid to one column, which pushes that card down past whatever now-full-width
+  // cards precede it -- scroll it back into view so the breakdown you just opened is what you see.
+  document.addEventListener('toggle', function(e){
+    var details = e.target;
+    if(!details.classList || !details.classList.contains('gil-details') || !details.open) return;
+    var card = details.closest('.job-card');
+    if(!card) return;
+    card.scrollIntoView({behavior:'smooth', block:'start'});
+  }, true);
+
   document.body.addEventListener('click', function(e){
     var btn = e.target.closest('.copy-btn');
     if(!btn || !btn.dataset.copy) return; // e.g. fetchGilPricesBtn shares the look, not the behavior

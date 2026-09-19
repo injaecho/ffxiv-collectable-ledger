@@ -1760,10 +1760,17 @@
   // its own raw materials" (buyItemUnitCost, from jobGilBreakdown) -- but only for a row that's
   // actually a crafted component (has its own RECIPE_TREE entry). A raw material used directly as a
   // top-level ingredient (a crystal, most often) has nothing to craft, so its cell is left empty.
-  function renderBuyBreakdownRows(buyItems, buyItemUnitCost, priceLookup, world, total){
+  function renderBuyBreakdownRows(buyItems, buyItemUnitCost, priceLookup, world){
     var ids = Object.keys(buyItems);
     if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
     ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
+    // buyAllTotal: every component's own market price, as if none of them were being crafted --
+    // a "what would this cost with zero crafting" reference point. buyRemainingTotal: just the
+    // components still actually being bought at market price with crafting turned on for the rest;
+    // a crafted component contributes 0 here (its real cost already shows up as the raw-material
+    // total in the "buying/gathering raw materials" table below, so adding it again here would
+    // double-count it).
+    var buyAllTotal = 0; var buyRemainingTotal = 0;
     var rows = ids.map(function(id){
       var qty = buyItems[id];
       var canCraft = !!RECIPE_TREE[id];
@@ -1774,6 +1781,10 @@
       // a market price that no longer applies. "crafted" in the Subtotal column stands in for that
       // real cost, the same way "gathered" does for a free raw material.
       var price = priceLookup(id);
+      if(price != null){
+        buyAllTotal += price * qty;
+        if(!crafting) buyRemainingTotal += price * qty;
+      }
       var subtotal = crafting ? 'crafted' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
       return '<tr class="gil-breakdown-row' + (crafting ? ' gil-breakdown-crafted' : '') + '">' +
         '<td class="gil-toggle-col">' + (canCraft ?
@@ -1790,7 +1801,11 @@
       '<thead><tr><th class="gil-toggle-col">Craft</th><th>Item</th><th class="num">Qty</th>' +
         '<th class="num">Price</th><th class="num">Subtotal</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tfoot><tr><td colspan="4">Total</td><td class="num">' + fmt(total) + ' gil</td></tr></tfoot>' +
+      '<tfoot>' +
+        '<tr><td colspan="4">Total cost to buy all</td><td class="num">' + fmt(buyAllTotal) + ' gil</td></tr>' +
+        '<tr><td colspan="4">Total cost with crafts</td><td class="num">' + fmt(buyRemainingTotal) +
+          ' gil</td></tr>' +
+      '</tfoot>' +
       '</table>';
   }
 
@@ -1842,7 +1857,7 @@
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/crafting components</div>' +
-            renderBuyBreakdownRows(b.buyItems, b.buyItemUnitCost, priceLookup, world, b.buyCost) +
+            renderBuyBreakdownRows(b.buyItems, b.buyItemUnitCost, priceLookup, world) +
           '</div>' +
           (craftEnabled ? '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +
@@ -1876,7 +1891,7 @@
         '<summary>Consolidated price breakdown, all jobs combined</summary>' +
         '<div class="gil-breakdown-group">' +
           '<div class="gil-breakdown-title">Buying/crafting components</div>' +
-          renderBuyBreakdownRows(allBuyItems, allBuyItemUnitCost, priceLookup, world, totalBuy) +
+          renderBuyBreakdownRows(allBuyItems, allBuyItemUnitCost, priceLookup, world) +
         '</div>' +
         (anyCraftEnabled ? '<div class="gil-breakdown-group">' +
           '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +

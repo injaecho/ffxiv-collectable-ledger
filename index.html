@@ -245,17 +245,6 @@
     <input type="checkbox" id="craftAllCheckbox"> Craft my own components -- all jobs
   </label>
 
-  <div class="market-row">
-    <label for="dcSelect">Gil prices via Universalis:</label>
-    <select id="dcSelect" aria-label="Data center" disabled>
-      <option value="">Loading data centers...</option>
-    </select>
-    <select id="worldSelect" aria-label="World" disabled>
-      <option value="">Choose a data center first</option>
-    </select>
-    <span class="market-status" id="marketStatus"></span>
-  </div>
-
   <div class="gather-row">
     <label class="craft-toggle craft-toggle-all">
       <input type="checkbox" id="gatherOwnCheckbox"> Gather my own raw materials
@@ -266,6 +255,17 @@
       <label class="craft-toggle">
         <input type="checkbox" id="gatherOtherCheckbox"> Include dungeon drops / GC items</label>
     </div>
+  </div>
+
+  <div class="market-row">
+    <label for="dcSelect">Gil prices via Universalis:</label>
+    <select id="dcSelect" aria-label="Data center" disabled>
+      <option value="">Loading data centers...</option>
+    </select>
+    <select id="worldSelect" aria-label="World" disabled>
+      <option value="">Choose a data center first</option>
+    </select>
+    <span class="market-status" id="marketStatus"></span>
   </div>
 
   <div class="job-grid" id="jobGrid"></div>

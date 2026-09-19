@@ -93,6 +93,19 @@
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
 
+  .exp-split{ display:flex; flex-direction:column; gap:6px; }
+  .exp-split-bar{
+    display:flex; height:6px; border-radius:4px; overflow:hidden; background: var(--paper-sunken);
+  }
+  .exp-split-bar .seg-turnin{ background: var(--teal); }
+  .exp-split-bar .seg-craft{ background: var(--accent); }
+  .exp-split-labels{ display:flex; gap:14px; flex-wrap:wrap; font-size:.76rem; color: var(--ink-soft); }
+  .exp-split-item{ display:flex; align-items:center; gap:5px; }
+  .exp-split-item b{ font-family:'IBM Plex Mono', monospace; color: var(--ink); font-weight:600; }
+  .dot{ width:8px; height:8px; border-radius:50%; flex:none; display:inline-block; }
+  .dot-turnin{ background: var(--teal); }
+  .dot-craft{ background: var(--accent); }
+
   .job-breakdown{ display:flex; flex-direction:column; gap:0; border-top:1px solid var(--line); padding-top:8px; }
   .brk-row{
     display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:.82rem;
@@ -141,7 +154,7 @@
 
   <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
 
-  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it.</p>
+  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it. The turn-in reward isn't the only EXP a cycle gives, though: crafting the item itself also grants ordinary completion EXP, and that's now baked into every turn-in too -- computed from the game's own base-EXP-per-recipe-level and level-difference tables, assuming 100% quality (the same +300% max-quality bonus max collectability implies) and no external buffs like rested EXP or food, which we're deliberately leaving out since they're not steady-state.</p>
 
   <footer>
     Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item.
@@ -235,10 +248,30 @@
 
   var fmt = function(n){ return Math.round(n).toLocaleString('en-US'); };
 
+  // Craft-completion EXP (separate from the appraiser's turn-in reward): the game's own base
+  // recipe EXP per apparent recipe level, and the level-difference modifier applied when your job
+  // is above the recipe's level. Formula and both tables verified against a community-reversed
+  // spreadsheet (in-game screenshots + tests) and cross-checked against a real reported value:
+  // a level-81 recipe at 0 level difference and +350% (300% max-quality + 50% rested, per the
+  // source data) comes out to ~209,326 EXP, matching a real observed 209,321.
+  var RECIPE_BASE_EXP = {81:139553, 83:157261, 85:182593, 87:208955, 89:230926, 90:239004,
+    91:305279, 93:350860, 95:397220, 97:449528, 99:499569, 100:522414};
+  var EXP_LEVEL_MOD = [100,96,92,88,84,80,75,70,65,60,55,45,35,25,20,18,16,15,14,13,12,10]; // index = level difference 0-21
+
+  // Craft EXP for turning out one copy of a Rarefied item at recipeLevel while your job is at
+  // jobLevel, assuming 100% quality (the max-collectability-max-quality assumption this tool makes
+  // throughout) and no external buffs (rested/food/FC, which we're deliberately not modeling).
+  function craftCompletionExp(recipeLevel, jobLevel){
+    var diff = Math.max(0, Math.min(21, jobLevel - recipeLevel));
+    var mod = EXP_LEVEL_MOD[diff];
+    var recipeExp = Math.floor(RECIPE_BASE_EXP[recipeLevel] / 3 * mod / 100);
+    return recipeExp * 4; // (1 + 300% max-quality bonus)
+  }
+
   function tiersFor(job){
     var items = CLASS_ITEMS[job];
     return LEVELS_ASC.map(function(lvl){
-      return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, exp: EXP_BY_LEVEL[lvl] };
+      return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, level: lvl, exp: EXP_BY_LEVEL[lvl] };
     });
   }
 
@@ -252,7 +285,10 @@
 
   // Simulates turn-in by turn-in from (level, exp) to the target level, carrying leftover EXP
   // forward and switching to a better-paying collectable the instant it unlocks. Levels below 81
-  // have no collectable yet, so that stretch is tallied separately as plain EXP.
+  // have no collectable yet, so that stretch is tallied separately as plain EXP. Each turn-in also
+  // earns craft-completion EXP for the craft itself (at 100% quality, no external buffs), on top
+  // of the appraiser's collectability reward -- computed from the current job level at the moment
+  // of that craft, so the level-difference modifier applies correctly if it's ever not 0.
   function computeForJob(job, level, exp, target){
     var tiers = tiersFor(job);
     level = Math.max(1, Math.min(100, Math.round(level) || 1));
@@ -264,6 +300,7 @@
     var simLevel = level;
     var preExp = 0;
     var counts = {}; var order = []; var totalTurnins = 0; var guard = 0;
+    var turnInExp = 0; var craftExp = 0;
 
     while(simLevel < target && guard < 100000){
       guard++;
@@ -277,7 +314,10 @@
       totalTurnins++;
       if(!(tier.label in counts)){ counts[tier.label] = 0; order.push(tier.label); }
       counts[tier.label]++;
-      remaining -= tier.exp;
+      var thisCraftExp = craftCompletionExp(tier.level, simLevel);
+      turnInExp += tier.exp;
+      craftExp += thisCraftExp;
+      remaining -= (tier.exp + thisCraftExp);
       while(remaining <= 0 && simLevel < target){
         simLevel++;
         if(simLevel >= target) break;
@@ -285,7 +325,8 @@
       }
     }
 
-    return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order, startLevel: level, target: target };
+    return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order,
+      startLevel: level, target: target, turnInExp: turnInExp, craftExp: craftExp };
   }
 
   var jobGrid = document.getElementById('jobGrid');
@@ -339,6 +380,19 @@
       (result.target !== 100 ? ' &rarr; target lv ' + result.target : '');
 
     var html = '';
+    if(result.totalTurnins > 0){
+      var expTotal = result.turnInExp + result.craftExp;
+      var turnInPct = expTotal > 0 ? Math.round(result.turnInExp / expTotal * 100) : 0;
+      var craftPct = 100 - turnInPct;
+      html += '<div class="exp-split">' +
+        '<div class="exp-split-bar"><span class="seg-turnin" style="width:' + turnInPct + '%"></span>' +
+          '<span class="seg-craft" style="width:' + craftPct + '%"></span></div>' +
+        '<div class="exp-split-labels">' +
+          '<span class="exp-split-item"><i class="dot dot-turnin"></i>Turn-ins <b class="num">' + fmt(result.turnInExp) + '</b> (' + turnInPct + '%)</span>' +
+          '<span class="exp-split-item"><i class="dot dot-craft"></i>Crafting <b class="num">' + fmt(result.craftExp) + '</b> (' + craftPct + '%)</span>' +
+        '</div>' +
+      '</div>';
+    }
     if(result.preExp > 0){
       html += '<div class="job-note">No collectable yet below level 81 -- Ishgardian Restoration (levels 21-80) is the recommended way to earn the roughly <b class="num">' +
         fmt(result.preExp) + '</b> EXP needed to get there, then switch to turn-ins below.</div>';
@@ -357,7 +411,8 @@
       '</div>';
     bodyEl.innerHTML = html;
 
-    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts };
+    return { totalTurnins: result.totalTurnins, job: job, order: result.order, counts: result.counts,
+      turnInExp: result.turnInExp, craftExp: result.craftExp };
   }
 
   function buildCombinedGarlandImportLink(perJobResults){
@@ -375,6 +430,8 @@
     var jobsInProgress = 0;
     var perJobResults = [];
     var distinctItems = 0;
+    var grandTurnInExp = 0;
+    var grandCraftExp = 0;
     jobGrid.querySelectorAll('.job-card').forEach(function(card){
       var r = renderJob(card);
       grandTotal += r.totalTurnins;
@@ -382,11 +439,17 @@
         jobsInProgress++;
         perJobResults.push(r);
         distinctItems += r.order.length;
+        grandTurnInExp += r.turnInExp;
+        grandCraftExp += r.craftExp;
       }
     });
+    var grandExpTotal = grandTurnInExp + grandCraftExp;
+    var grandTurnInPct = grandExpTotal > 0 ? Math.round(grandTurnInExp / grandExpTotal * 100) : 0;
     summaryBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Jobs still leveling</span><span class="val num">' + jobsInProgress + ' / 8</span></div>' +
-      '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>';
+      '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>' +
+      '<div class="summary-item"><span class="lbl">EXP from turn-ins</span><span class="val num">' + fmt(grandTurnInExp) + ' (' + grandTurnInPct + '%)</span></div>' +
+      '<div class="summary-item"><span class="lbl">EXP from crafting</span><span class="val num">' + fmt(grandCraftExp) + ' (' + (100 - grandTurnInPct) + '%)</span></div>';
 
     if(perJobResults.length){
       var combinedUrl = buildCombinedGarlandImportLink(perJobResults);

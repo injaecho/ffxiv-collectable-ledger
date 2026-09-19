@@ -73,6 +73,11 @@
   .gil-receipt{
     background: var(--paper); border:1px solid var(--accent); border-radius:14px; padding:14px 20px;
     box-shadow: var(--shadow);
+    /* .wrap is a column flexbox, which stretches this card to its width by default -- but stretch
+       only ever shrinks the card's used width down to that stretched size, it doesn't grow it past
+       min-content. Without this, a table too wide to fit would visually spill past the card's own
+       border/background instead of the card growing (and its border/background) along with it. */
+    min-width: min-content;
   }
   .gil-receipt[hidden]{ display:none; }
 
@@ -152,10 +157,6 @@
   .gil-details[open] summary{ margin-bottom:6px; }
   .gil-breakdown-group{ margin-top:8px; max-width:100%; overflow-x:auto; }
   .gil-breakdown-group:first-of-type{ margin-top:0; }
-  /* The consolidated receipt sits full-width in .wrap (not a grid cell like a job card), so
-     instead of scrolling the table within the card, let the card itself grow past the page
-     width and scroll horizontally as a whole. */
-  .gil-receipt .gil-breakdown-group{ overflow-x:visible; }
   .gil-breakdown-title{
     font-size:.74rem; font-weight:600; color: var(--ink-soft); text-transform:uppercase;
     letter-spacing:.04em; margin-bottom:4px;

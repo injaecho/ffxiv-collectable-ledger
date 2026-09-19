@@ -187,9 +187,11 @@
     20-80 stretch instead. From 71 onward, Cosmic Exploration is still an option, but this tool
     models the collectable route. It assumes 100% quality (+300% bonus EXP) and no external buffs
     like rested EXP or food. "Craft my own components" (experimental) recursively prices out that
-    collectable's full ingredient tree at 0% quality; EXP it earns for jobs other than the one
-    you're viewing is shown as an informational note only, using that other job's currently-entered
-    level rather than simulating it leveling up alongside this one.
+    collectable's full ingredient tree at 0% quality, unlocking in 71-74 / 75-80 / 81-84 / 85-90 /
+    91-94 / 95-100 brackets as each bracket's intermediate recipes become available -- below a
+    bracket's floor, components are bought instead, same as with the toggle off. EXP it earns for
+    jobs other than the one you're viewing is shown as an informational note only, using that other
+    job's currently-entered level rather than simulating it leveling up alongside this one.
   </p>
 
   <footer>
@@ -224,6 +226,15 @@
   // Derived from EXP_BY_LEVEL (the primary table) instead of hand-duplicated, so the level set
   // can't silently drift out of sync with it.
   var LEVELS_ASC = Object.keys(EXP_BY_LEVEL).map(Number).sort(function(a, b){ return a - b; });
+
+  // Component-crafting doesn't unlock all at once: each bracket's intermediate recipes only
+  // become available at the bracket's floor level (74 -> 75-80, 80 -> 81-84, 84 -> 85-90, etc.),
+  // so a job crafting its own components moves through 71-100 in 4/6/4/6/4/6-level brackets
+  // rather than being able to self-craft every tier from level 71 onward. Below the threshold for
+  // a given collectable, component crafting for it isn't available yet even with the toggle on --
+  // it's simply bought instead, same as with the toggle off.
+  var COMPONENT_UNLOCK_THRESHOLD = {72:71, 74:71, 76:75, 78:75, 80:75, 81:81, 83:81,
+    85:85, 87:85, 89:85, 90:85, 91:91, 93:91, 95:95, 97:95, 99:95, 100:95};
 
   var CLASS_ITEMS = {
     Carpenter: {72:"White Oak Partisan", 74:"Applewood Staff", 76:"White Ash Earrings", 78:"Sandteak Fauchard",
@@ -760,10 +771,12 @@
   // of that craft, so the level-difference modifier applies correctly if it's ever not 0.
   //
   // When craftComponents is on, every turn-in also crafts that item's full component tree at 0%
-  // quality: same-job component EXP folds into this job's own craftExp (fewer turn-ins needed),
-  // while other jobs' shares accumulate in crossJobExpGiven, keyed by ClassJob abbreviation --
-  // informational only, using otherJobLevels' currently-entered levels rather than a full
-  // simulation of those other jobs leveling up alongside this one.
+  // quality (once COMPONENT_UNLOCK_THRESHOLD says that bracket's recipes are unlocked -- below
+  // that, components are bought instead, same as with the toggle off): same-job component EXP
+  // folds into this job's own craftExp (fewer turn-ins needed), while other jobs' shares
+  // accumulate in crossJobExpGiven, keyed by ClassJob abbreviation -- informational only, using
+  // otherJobLevels' currently-entered levels rather than a full simulation of those other jobs
+  // leveling up alongside this one.
   function computeForJob(job, level, exp, target, craftComponents, otherJobLevels){
     var tiers = tiersFor(job);
     var jobAbbr = JOB_ABBR[job];
@@ -792,7 +805,8 @@
       counts[tier.label]++;
       var thisCraftExp = craftCompletionExp(tier.level, simLevel);
       var componentExp = 0;
-      if(craftComponents){
+      var componentsUnlocked = simLevel >= (COMPONENT_UNLOCK_THRESHOLD[tier.level] || tier.unlockLevel);
+      if(craftComponents && componentsUnlocked){
         var split = craftComponentsExp(explodeComponents(tier.itemId), jobAbbr, simLevel, otherJobLevels || {});
         componentExp = split.ownBonus;
         Object.keys(split.crossJobExp).forEach(function(abbr){

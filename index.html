@@ -1634,6 +1634,7 @@
         cacheEntry.fetchedAt = Date.now();
         savePriceCacheToLocalStorage();
       }
+      if(missingNames.length) saveItemNameCacheToLocalStorage();
       fetchGilPricesBtn.disabled = false;
       marketStatus.textContent = '';
       renderGilResults(state, cards, world, cache);
@@ -1918,6 +1919,25 @@
     }
   }
 
+  // Unlike prices, names never go stale, so this is a flat cache with no TTL/timestamp -- once an
+  // item's name is known it's known for good. Without this, a page reload would show "Item #<id>"
+  // for everything in the breakdown until "Fetch gil prices" was clicked again, even though the
+  // price cache alone was already fresh enough to render real numbers immediately.
+  var ITEM_NAME_STORAGE_KEY = 'ffxiv-collectable-ledger-item-names-v1';
+  function saveItemNameCacheToLocalStorage(){
+    try{ localStorage.setItem(ITEM_NAME_STORAGE_KEY, JSON.stringify(ITEM_NAME_CACHE)); }
+    catch(e){ console.warn('Could not save the item name cache to this browser:', e); }
+  }
+  function loadItemNameCacheFromLocalStorage(){
+    try{
+      var raw = localStorage.getItem(ITEM_NAME_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      console.warn('Could not load the saved item name cache (corrupted or blocked storage):', e);
+      return {};
+    }
+  }
+
   // Universalis's DC/world lists are metadata, not per-item prices -- fetched once on load, not
   // per keystroke, so unlike the old free-text field there's no debounce to worry about here: a
   // <select> fires one change event per pick, not a stream of keystrokes, so each pick just
@@ -2046,6 +2066,7 @@
   })();
   GATHER_ITEM_OVERRIDES = loadGatherOverridesFromLocalStorage();
   GIL_PRICE_CACHE = loadPriceCacheFromLocalStorage();
+  ITEM_NAME_CACHE = loadItemNameCacheFromLocalStorage();
 
   // Delegated because the breakdown table (and every checkbox in it) is fully rebuilt by every
   // recalcAll -- a listener bound to a specific checkbox would be destroyed along with it. Attached

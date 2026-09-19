@@ -1,0 +1,432 @@
+<title>Collectable Leveling Ledger</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #eef0f2;
+    --paper: #ffffff;
+    --paper-sunken: #e4e7eb;
+    --ink: #1b2430;
+    --ink-soft: #4c5666;
+    --ink-faint: #7d8697;
+    --line: #d3d8de;
+    --accent: #b3791f;
+    --accent-ink: #6e4b12;
+    --accent-soft: #f3e3c4;
+    --teal: #2f7a6b;
+    --teal-soft: #dcefe9;
+    --rust: #ab4a2c;
+    --rust-soft: #f6e1d8;
+    --shadow: 0 1px 2px rgba(27,36,48,.06), 0 8px 24px -12px rgba(27,36,48,.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #12171d; --paper: #1c232b; --paper-sunken: #232b34; --ink: #e9e7de; --ink-soft: #b7bcc4;
+      --ink-faint: #7c848f; --line: #313a44; --accent: #dba646; --accent-ink: #f2d495; --accent-soft: #3a3120;
+      --teal: #5cb2a0; --teal-soft: #1c332e; --rust: #e0805f; --rust-soft: #3a2620;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #12171d; --paper: #1c232b; --paper-sunken: #232b34; --ink: #e9e7de; --ink-soft: #b7bcc4;
+    --ink-faint: #7c848f; --line: #313a44; --accent: #dba646; --accent-ink: #f2d495; --accent-soft: #3a3120;
+    --teal: #5cb2a0; --teal-soft: #1c332e; --rust: #e0805f; --rust-soft: #3a2620;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -14px rgba(0,0,0,.6);
+  }
+
+  *{ box-sizing: border-box; }
+  body{
+    background: var(--bg); color: var(--ink); font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    padding-inline: 20px; padding-block: 32px 56px;
+  }
+  .wrap{ max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  .num{ font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  header.top{ display:flex; flex-direction:column; gap:6px; }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+    color: var(--teal); font-weight:600;
+  }
+  h1{
+    font-family:'Spectral', Georgia, serif; font-weight:700; font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.05rem);
+    margin:0; text-wrap:balance; letter-spacing:-.01em;
+  }
+  .sub{ color: var(--ink-soft); font-size:.92rem; max-width:70ch; line-height:1.5; }
+
+  .summary-bar{
+    display:flex; gap:24px; flex-wrap:wrap; background: var(--paper); border:1px solid var(--line);
+    border-radius:14px; padding:16px 20px; box-shadow: var(--shadow);
+  }
+  .summary-item{ display:flex; flex-direction:column; gap:2px; }
+  .summary-item .lbl{ font-size:.72rem; color: var(--ink-soft); text-transform:uppercase; letter-spacing:.05em; }
+  .summary-item .val{ font-family:'IBM Plex Mono', monospace; font-size:1.3rem; font-weight:600; color: var(--accent-ink); }
+  :root:not([data-theme="light"]) .summary-item .val{ color: var(--accent); }
+  :root[data-theme="dark"] .summary-item .val{ color: var(--accent); }
+
+  .job-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; }
+
+  .job-card{
+    background: var(--paper); border:1px solid var(--line); border-radius:14px; padding:16px 18px;
+    box-shadow: var(--shadow); display:flex; flex-direction:column; gap:12px;
+  }
+  .job-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .job-name{ font-family:'Spectral', serif; font-weight:600; font-size:1.08rem; }
+  .job-total{ font-family:'IBM Plex Mono', monospace; font-size:.82rem; color: var(--ink-soft); }
+  .job-total b{ color: var(--accent-ink); font-size:1rem; }
+  :root:not([data-theme="light"]) .job-total b{ color: var(--accent); }
+  :root[data-theme="dark"] .job-total b{ color: var(--accent); }
+
+  .job-inputs{ display:flex; gap:10px; }
+  .field{ display:flex; flex-direction:column; gap:4px; flex:1; }
+  .field label{ font-size:.72rem; color: var(--ink-soft); font-weight:500; }
+  .field label .opt{ color: var(--ink-faint); font-weight:400; }
+  .field input[type=number]{
+    font-family:'IBM Plex Mono', monospace; font-size:.95rem; font-variant-numeric: tabular-nums;
+    padding:7px 9px; border-radius:8px; border:1px solid var(--line); background: var(--paper-sunken); color: var(--ink);
+    width:100%;
+  }
+  .field input:focus{ outline: 2px solid var(--teal); outline-offset:1px; }
+
+  .job-progress{ font-size:.74rem; color: var(--ink-faint); }
+  .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
+
+  .job-breakdown{ display:flex; flex-direction:column; gap:0; border-top:1px solid var(--line); padding-top:8px; }
+  .brk-row{
+    display:flex; justify-content:space-between; gap:8px; padding:5px 0; font-size:.82rem;
+    border-bottom:1px dashed var(--line);
+  }
+  .brk-row:last-child{ border-bottom:none; }
+  .brk-name{
+    color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid transparent;
+    transition: color .12s, border-color .12s;
+  }
+  .brk-name:hover, .brk-name:focus-visible{ color: var(--teal); border-bottom-color: var(--teal); }
+  .brk-count{ font-family:'IBM Plex Mono', monospace; font-weight:600; flex:none; }
+
+  .job-note{
+    font-size:.76rem; padding:8px 10px; border-radius:8px; line-height:1.45;
+    background: var(--teal-soft); color: var(--teal); border:1px solid color-mix(in srgb, var(--teal) 35%, transparent);
+  }
+  .job-note.done{ background: var(--accent-soft); color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  :root:not([data-theme="light"]) .job-note.done{ color: var(--accent); }
+  :root[data-theme="dark"] .job-note.done{ color: var(--accent); }
+
+  .import-row{ display:flex; align-items:center; gap:8px; margin-top:2px; }
+  .copy-btn{
+    font-family:'IBM Plex Sans', sans-serif; font-size:.78rem; font-weight:500; color: var(--teal);
+    background: var(--teal-soft); border:1px solid color-mix(in srgb, var(--teal) 35%, transparent);
+    border-radius:7px; padding:6px 10px; cursor:pointer;
+  }
+  .copy-btn:hover{ background: color-mix(in srgb, var(--teal) 18%, var(--teal-soft)); }
+  .copy-flag{ font-size:.76rem; color: var(--teal); font-weight:600; }
+
+  .hint{ font-size:.78rem; color: var(--ink-faint); line-height:1.6; }
+  footer{ font-size:.76rem; color: var(--ink-faint); line-height:1.6; text-align:center; }
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <span class="eyebrow">Disciples of the Hand · EXP planner</span>
+    <h1>Collectable Leveling Ledger</h1>
+    <p class="sub">Enter each crafting job's current level and current EXP in that level. The ledger takes it from there — for every job, at max collectability, it works out exactly how many of each Rarefied collectable to craft and turn in the rest of the way to level 100 (or an earlier target level, if you set one).</p>
+  </header>
+
+  <div class="summary-bar" id="summaryBar"></div>
+
+  <div class="job-grid" id="jobGrid"></div>
+
+  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it.</p>
+
+  <footer>
+    Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item.
+  </footer>
+</div>
+
+<script>
+(function(){
+  // ExpToNext[L] = EXP required to go from level L to L+1. Index 1..100. Source: game ParamGrow table.
+  var EXP_TO_NEXT = [null,300,450,630,970,1440,1940,3000,3920,4970,5900,7430,8620,10200,11300,13100,15200,17400,19600,21900,24300,
+    27400,30600,33900,37300,40800,49200,54600,61900,65600,68400,74000,82700,88700,95000,102000,113000,121000,133000,142000,
+    155000,163000,171000,179000,187000,195000,214000,229000,244000,259000,421000,500000,580000,663000,749000,837000,927000,
+    1019000,1114000,1211000,1387000,1456000,1534000,1621000,1720000,1834000,1968000,2126000,2317000,2550000,2923000,3018000,
+    3153000,3324000,3532000,3770600,4066000,4377000,4777000,5256000,5992000,6171000,6942000,7205000,7948000,8287000,9231000,
+    9529000,10459000,10838000,13278000,13659000,15348000,15912000,17534000,18263000,20322000,20957000,22979000,23789000,29023000];
+
+  // Real Lv 81-100 "Rarefied" collectable EXP at max collectability, from FFXIV Teamcraft's live
+  // collectables data. Confirmed identical across all 8 DoH jobs at a given level -- only the item
+  // name differs per job. Each item is also craftable (and turn-in-able) one level early.
+  var EXP_BY_LEVEL = {81:1055241, 83:1232055, 85:1417077, 87:1629459, 89:1853298, 90:2270538,
+    91:2335689, 93:2720952, 95:3122973, 97:3583647, 99:4067919, 100:4962933};
+  var LEVELS_ASC = [81,83,85,87,89,90,91,93,95,97,99,100];
+
+  var CLASS_ITEMS = {
+    Carpenter: {81:"Horse Chestnut Kasa", 83:"Palm Bracelet", 85:"Red Pine Spinning Wheel", 87:"Ironwood Grinding Wheel",
+      89:"Integral Armillae", 90:"Integral Fishing Rod", 91:"Ginseng Earrings", 93:"Ceiba Spear",
+      95:"Dark Mahogany Necklace", 97:"Acacia Rod", 99:"Claro Walnut Grinding Wheel", 100:"Claro Walnut Fishing Rod"},
+    Blacksmith: {81:"High Durium Pistol", 83:"High Durium Greatsword", 85:"Bismuth Sledgehammer", 87:"Manganese Cross-pein Hammer",
+      89:"Chondrite Culinary Knife", 90:"Chondrite Lapidary Hammer", 91:"Mountain Chromite Fists", 93:"Ruthenium War Axe",
+      95:"Cobalt Tungsten Scimitars", 97:"Titanium Gold Mortar", 99:"Ra'Kaznar War Scythe", 100:"Ra'Kaznar Round Knife"},
+    Armorer: {81:"High Durium Knuckles", 83:"High Durium Kite Shield", 85:"Bismuth Fat Cat Frypan", 87:"Manganese Armor of the Behemoth King",
+      89:"Chondrite Sollerets", 90:"Chondrite Alembic", 91:"Mountain Chromite Alembic", 93:"Ruthenium Sabatons",
+      95:"Cobalt Tungsten Chocobo Frypan", 97:"Titanium Gold Thorned Corselet", 99:"Ra'Kaznar Greaves", 100:"Ra'Kaznar Ring"},
+    Goldsmith: {81:"High Durium Milpreves", 83:"Pewter Choker", 85:"Phrygian Earring", 87:"Manganese Horn of the Last Unicorn",
+      89:"Star Quartz Choker", 90:"Chondrite Needle", 91:"Lar Longbow", 93:"Ihuykanite Circlet",
+      95:"Cobalt Tungsten Tuck", 97:"White Gold Choker", 99:"Ra'Kaznar Orrery", 100:"Black Star Earrings"},
+    Leatherworker: {81:"Gajaskin Shoes", 83:"Luncheon Toadskin Hose", 85:"Saigaskin Gloves", 87:"Kumbhiraskin Shoes",
+      89:"Ophiotauroskin Top", 90:"Ophiotauroskin Halfgloves", 91:"Loboskin Fingerless Gloves", 93:"Crocodileskin Leggings",
+      95:"Br'aaxskin Armlets", 97:"Gomphotherium Brais", 99:"Gargantuaskin Trousers", 100:"Gargantuaskin Hat"},
+    Weaver: {81:"Darkhempen Hat", 83:"Almasty Serge Gloves", 85:"Snow Linen Doublet", 87:"Scarlet Moko Wedge Cap",
+      89:"AR-Caean Velvet Bottoms", 90:"AR-Caean Velvet Work Cap", 91:"Snow Cotton Beret", 93:"Mountain Linen Top",
+      95:"Sarcenet Kecks", 97:"Rroneek Serge Hat", 99:"Thunderyards Silk Gloves", 100:"Thunderyards Silk Culottes"},
+    Alchemist: {81:"Gajaskin Codex", 83:"Luncheon Toadskin Grimoire", 85:"Moon Gel", 87:"Enchanted Manganese Ink",
+      89:"Draught", 90:"Ophiotauroskin Magitek Codex", 91:"Loboskin Grimoire", 93:"Gemsap of Dexterity",
+      95:"Br'aaxskin Codex", 97:"Cunning Craftsman's Tisane", 99:"Gemdraught of Vitality", 100:"Claro Walnut Flat Brush"},
+    Culinarian: {81:"Archon Loaf", 83:"King Crab Cake", 85:"Happiness Juice", 87:"Giant Haddock Dip",
+      89:"Giant Popoto Pancakes", 90:"Sykon Bavarois", 91:"Boiled Alpaca Steak", 93:"Banana Ponzecake",
+      95:"Turali Pineapple Ponzecake", 97:"Salmon Jerky", 99:"Stuffed Peppers", 100:"Tacos de Carne Asada"}
+  };
+  var JOB_ORDER = ["Carpenter","Blacksmith","Armorer","Goldsmith","Leatherworker","Weaver","Alchemist","Culinarian"];
+
+  // Game item IDs for each Rarefied collectable (same IDs Garland Tools and Teamcraft both use).
+  var ITEM_IDS = {
+    Carpenter: {81:35626,83:35627,85:35628,87:35629,89:35630,90:36619,91:44185,93:44186,95:44187,97:44188,99:44189,100:44190},
+    Blacksmith: {81:35631,83:35632,85:35633,87:35634,89:35635,90:36620,91:44191,93:44192,95:44193,97:44194,99:44195,100:44196},
+    Armorer: {81:35636,83:35637,85:35638,87:35639,89:35640,90:36621,91:44197,93:44198,95:44199,97:44200,99:44201,100:44202},
+    Goldsmith: {81:35641,83:35642,85:35643,87:35644,89:35645,90:36622,91:44203,93:44204,95:44205,97:44206,99:44207,100:44208},
+    Leatherworker: {81:35646,83:35647,85:35648,87:35649,89:35650,90:36623,91:44209,93:44210,95:44211,97:44212,99:44213,100:44214},
+    Weaver: {81:35651,83:35652,85:35653,87:35654,89:35655,90:36624,91:44215,93:44216,95:44217,97:44218,99:44219,100:44220},
+    Alchemist: {81:35656,83:35657,85:35658,87:35659,89:35660,90:36625,91:44221,93:44222,95:44223,97:44224,99:44225,100:44226},
+    Culinarian: {81:35661,83:35662,85:35663,87:35664,89:35665,90:36626,91:44227,93:44228,95:44229,97:44230,99:44231,100:44232}
+  };
+
+  function itemIdForLabel(job, label){
+    var levelByLabel = {};
+    LEVELS_ASC.forEach(function(lvl){ levelByLabel['Rarefied ' + CLASS_ITEMS[job][lvl]] = lvl; });
+    return ITEM_IDS[job][levelByLabel[label]];
+  }
+
+  function teamcraftItemUrl(job, label){
+    var slug = label.replace(/\s+/g, '-');
+    return 'https://ffxivteamcraft.com/db/en/item/' + itemIdForLabel(job, label) + '/' + slug;
+  }
+
+  // Builds a Garland Tools "group" link encoding item IDs + quantities. Teamcraft's list importer
+  // (Lists -> import icon -> "paste link to external list") reads this format directly and turns
+  // it into "add N of item X" lines for a real Teamcraft list -- verified against Teamcraft's own
+  // open-source parser for garlandtools.org/db/#group/ links.
+  function buildGarlandImportLink(job, order, counts){
+    var parts = order.map(function(label){
+      return 'item/' + itemIdForLabel(job, label) + '+' + counts[label];
+    });
+    return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
+  }
+
+  // Example starting point -- plainly a placeholder, replace with your own levels/EXP per job.
+  var EXAMPLE_STATE = {
+    Carpenter: [85, 0], Blacksmith: [91, 500000], Armorer: [78, 0], Goldsmith: [100, 0],
+    Leatherworker: [60, 0], Weaver: [40, 0], Alchemist: [20, 0], Culinarian: [99, 1200000]
+  };
+
+  var fmt = function(n){ return Math.round(n).toLocaleString('en-US'); };
+
+  function tiersFor(job){
+    var items = CLASS_ITEMS[job];
+    return LEVELS_ASC.map(function(lvl){
+      return { label: 'Rarefied ' + items[lvl], unlockLevel: lvl - 1, exp: EXP_BY_LEVEL[lvl] };
+    });
+  }
+
+  function bestTierAt(level, tiers){
+    var best = null;
+    tiers.forEach(function(t){
+      if(level >= t.unlockLevel){ if(!best || t.exp > best.exp) best = t; }
+    });
+    return best;
+  }
+
+  // Simulates turn-in by turn-in from (level, exp) to the target level, carrying leftover EXP
+  // forward and switching to a better-paying collectable the instant it unlocks. Levels below 81
+  // have no collectable yet, so that stretch is tallied separately as plain EXP.
+  function computeForJob(job, level, exp, target){
+    var tiers = tiersFor(job);
+    level = Math.max(1, Math.min(100, Math.round(level) || 1));
+    target = Math.max(1, Math.min(100, Math.round(target) || 100));
+    if(level >= target){ return { done: true, alreadyThere: true, target: target }; }
+
+    var expAtCur = EXP_TO_NEXT[level] || 0;
+    var remaining = Math.max(0, expAtCur - Math.max(0, exp || 0));
+    var simLevel = level;
+    var preExp = 0;
+    var counts = {}; var order = []; var totalTurnins = 0; var guard = 0;
+
+    while(simLevel < target && guard < 100000){
+      guard++;
+      var tier = bestTierAt(simLevel, tiers);
+      if(!tier){
+        preExp += remaining;
+        simLevel++;
+        remaining = EXP_TO_NEXT[simLevel] || 0;
+        continue;
+      }
+      totalTurnins++;
+      if(!(tier.label in counts)){ counts[tier.label] = 0; order.push(tier.label); }
+      counts[tier.label]++;
+      remaining -= tier.exp;
+      while(remaining <= 0 && simLevel < target){
+        simLevel++;
+        if(simLevel >= target) break;
+        remaining += (EXP_TO_NEXT[simLevel] || 0);
+      }
+    }
+
+    return { done: false, preExp: preExp, totalTurnins: totalTurnins, counts: counts, order: order, startLevel: level, target: target };
+  }
+
+  var jobGrid = document.getElementById('jobGrid');
+  var summaryBar = document.getElementById('summaryBar');
+
+  JOB_ORDER.forEach(function(job){
+    var card = document.createElement('div');
+    card.className = 'job-card';
+    card.dataset.job = job;
+    var ex = EXAMPLE_STATE[job];
+    card.innerHTML =
+      '<div class="job-head"><span class="job-name">' + job + '</span><span class="job-total" data-r="total"></span></div>' +
+      '<div class="job-inputs">' +
+        '<div class="field"><label>Current level</label><input type="number" min="1" max="100" value="' + ex[0] + '" data-f="level"></div>' +
+        '<div class="field"><label>Current EXP</label><input type="number" min="0" step="1" value="' + ex[1] + '" data-f="exp"></div>' +
+        '<div class="field"><label>Target lv <span class="opt">(optional)</span></label><input type="number" min="2" max="100" placeholder="100" data-f="target"></div>' +
+      '</div>' +
+      '<div class="job-progress" data-r="progress"></div>' +
+      '<div data-r="body"></div>';
+    jobGrid.appendChild(card);
+  });
+
+  function renderJob(card){
+    var job = card.dataset.job;
+    var levelInput = card.querySelector('[data-f="level"]');
+    var expInput = card.querySelector('[data-f="exp"]');
+    var targetInput = card.querySelector('[data-f="target"]');
+    var level = parseFloat(levelInput.value) || 1;
+    var expAtCur = EXP_TO_NEXT[Math.max(1, Math.min(100, Math.round(level)))] || 0;
+    var exp = Math.max(0, Math.min(expAtCur, parseFloat(expInput.value) || 0));
+    var targetRaw = parseFloat(targetInput.value);
+    var target = targetRaw ? targetRaw : 100;
+
+    var result = computeForJob(job, level, exp, target);
+    var totalEl = card.querySelector('[data-r="total"]');
+    var progressEl = card.querySelector('[data-r="progress"]');
+    var bodyEl = card.querySelector('[data-r="body"]');
+
+    if(result.done){
+      totalEl.innerHTML = '';
+      progressEl.innerHTML = '';
+      bodyEl.innerHTML = result.alreadyThere
+        ? '<div class="job-note done">Already at or past level ' + result.target + ' -- nothing left to turn in.</div>'
+        : '<div class="job-note done">Already level 100 -- nothing left to turn in.</div>';
+      return { totalTurnins: 0 };
+    }
+
+    totalEl.innerHTML = '<b class="num">' + fmt(result.totalTurnins) + '</b> turn-ins';
+    progressEl.innerHTML = fmt(exp) + ' / ' + fmt(expAtCur) + ' EXP in level ' + result.startLevel +
+      (result.target !== 100 ? ' &rarr; target lv ' + result.target : '');
+
+    var html = '';
+    if(result.preExp > 0){
+      html += '<div class="job-note">No collectable yet below level 81 -- Ishgardian Restoration (levels 21-80) is the recommended way to earn the roughly <b class="num">' +
+        fmt(result.preExp) + '</b> EXP needed to get there, then switch to turn-ins below.</div>';
+    }
+    html += '<div class="job-breakdown">';
+    result.order.forEach(function(label){
+      var url = teamcraftItemUrl(job, label);
+      html += '<div class="brk-row"><a class="brk-name" href="' + url + '" target="_blank" rel="noopener">' + label +
+        '</a><span class="brk-count num">' + fmt(result.counts[label]) + '×</span></div>';
+    });
+    html += '</div>';
+    var importUrl = buildGarlandImportLink(job, result.order, result.counts);
+    html += '<div class="import-row">' +
+      '<button type="button" class="copy-btn" data-copy="' + importUrl.replace(/"/g, '&quot;') + '">Copy Teamcraft import link</button>' +
+      '<span class="copy-flag" hidden>Copied!</span>' +
+      '</div>';
+    bodyEl.innerHTML = html;
+
+    return { totalTurnins: result.totalTurnins };
+  }
+
+  function recalcAll(){
+    var grandTotal = 0;
+    var jobsInProgress = 0;
+    jobGrid.querySelectorAll('.job-card').forEach(function(card){
+      var r = renderJob(card);
+      grandTotal += r.totalTurnins;
+      if(r.totalTurnins > 0) jobsInProgress++;
+    });
+    summaryBar.innerHTML =
+      '<div class="summary-item"><span class="lbl">Jobs still leveling</span><span class="val num">' + jobsInProgress + ' / 8</span></div>' +
+      '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>';
+  }
+
+  jobGrid.addEventListener('input', recalcAll);
+
+  jobGrid.addEventListener('click', function(e){
+    var btn = e.target.closest('.copy-btn');
+    if(!btn) return;
+    var url = btn.dataset.copy;
+    var flag = btn.nextElementSibling;
+    var showCopied = function(){
+      flag.hidden = false;
+      setTimeout(function(){ flag.hidden = true; }, 1600);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(showCopied, function(){ fallbackCopy(url, showCopied); });
+    } else {
+      fallbackCopy(url, showCopied);
+    }
+  });
+
+  function fallbackCopy(text, done){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){}
+    document.body.removeChild(ta);
+  }
+
+  recalcAll();
+
+  // carry state across a live republish
+  function snapshot(){
+    var state = {};
+    jobGrid.querySelectorAll('.job-card').forEach(function(card){
+      state[card.dataset.job] = {
+        level: card.querySelector('[data-f="level"]').value,
+        exp: card.querySelector('[data-f="exp"]').value,
+        target: card.querySelector('[data-f="target"]').value
+      };
+    });
+    return state;
+  }
+  function boot(data){
+    if(data){
+      jobGrid.querySelectorAll('.job-card').forEach(function(card){
+        var s = data[card.dataset.job];
+        if(!s) return;
+        card.querySelector('[data-f="level"]').value = s.level;
+        card.querySelector('[data-f="exp"]').value = s.exp;
+        card.querySelector('[data-f="target"]').value = s.target || '';
+      });
+    }
+    recalcAll();
+  }
+  try{
+    if(window.claude && window.claude.hot){
+      window.claude.hot.snapshot(snapshot);
+      window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data);
+    }
+  }catch(e){}
+})();
+</script>

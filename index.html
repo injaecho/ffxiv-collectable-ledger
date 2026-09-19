@@ -1351,6 +1351,14 @@
         if(craftThis && !(itemId in buyItemUnitCost)){
           buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);
         }
+        // A raw material used directly here is the same raw material the leaves loop below would
+        // otherwise charge for (or not, if it's free-gathered) -- it doesn't stop being gatherable
+        // just because this particular recipe happens to call for it directly instead of through an
+        // intermediate component. Without this, buyCost would force-buy it at market price even
+        // with "gather my own raw materials" on, quietly inflating "Buying components" by a cost
+        // that's invisible in every table below it (excluded from the components table since it has
+        // no recipe, and shown as free/gathered in the raw-materials table).
+        if(!hasRecipe && isFreeGathered(itemId)) return;
         var price = priceLookup(itemId);
         if(price == null) missing[itemId] = true; else buyCost += price * qty;
       });

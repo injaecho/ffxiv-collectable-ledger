@@ -250,6 +250,7 @@
   <label class="craft-toggle craft-toggle-all">
     <input type="checkbox" id="craftAllCheckbox"> Craft my own components -- all jobs
   </label>
+  <span class="market-status market-error" id="craftAllError" hidden></span>
 
   <div class="gather-row">
     <label class="craft-toggle craft-toggle-all">
@@ -1299,6 +1300,7 @@
   var consolidatedBar = document.getElementById('consolidatedBar');
   var gilBar = document.getElementById('gilBar');
   var craftAllCheckbox = document.getElementById('craftAllCheckbox');
+  var craftAllError = document.getElementById('craftAllError');
   var dcSelect = document.getElementById('dcSelect');
   var worldSelect = document.getElementById('worldSelect');
   var marketStatus = document.getElementById('marketStatus');
@@ -1816,7 +1818,18 @@
   }
 
   // Clicking while indeterminate (a mix of on/off) selects all, same as a native "select all" box.
+  // Turning it off while "gather my own raw materials" is on would mean buying components made
+  // from materials you already gathered, which doesn't make sense -- block that specific case
+  // (revert the checkbox and explain why) rather than silently leaving gathering on regardless.
   craftAllCheckbox.addEventListener('input', function(){
+    if(!craftAllCheckbox.checked && gatherOwnCheckbox.checked){
+      craftAllCheckbox.checked = true;
+      craftAllError.textContent = 'Can\'t turn off crafting your own components while "Gather my ' +
+        'own raw materials" is on -- turn that off first.';
+      craftAllError.hidden = false;
+      return;
+    }
+    craftAllError.hidden = true;
     setAllCraftComponents(craftAllCheckbox.checked);
     recalcAll();
     clearTimeout(saveDebounceTimer);
@@ -1998,6 +2011,7 @@
   // must run before the generic one below (registered first, so it fires first) so the checkboxes
   // are already updated by the time that listener's recalcAll() reads them.
   gatherOwnCheckbox.addEventListener('input', function(){
+    if(!gatherOwnCheckbox.checked) craftAllError.hidden = true; // stale "turn that off first" notice
     if(gatherOwnCheckbox.checked && !craftAllCheckbox.checked){
       setAllCraftComponents(true);
       clearTimeout(saveDebounceTimer);

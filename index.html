@@ -167,8 +167,13 @@
   :root:not([data-theme="light"]) .gil-breakdown-table tfoot td.num{ color: var(--accent); }
   :root[data-theme="dark"] .gil-breakdown-table tfoot td.num{ color: var(--accent); }
   .gil-breakdown-row.gil-breakdown-free td.num:last-child{ color: var(--teal); font-style:italic; }
-  .gil-gather-col{ width:2.4em; text-align:center !important; }
-  .gil-gather-col input{ cursor:pointer; }
+  .gil-breakdown-row.gil-breakdown-crafted td.num:last-child{ color: var(--accent-ink); font-style:italic; }
+  :root:not([data-theme="light"]) .gil-breakdown-row.gil-breakdown-crafted td.num:last-child{
+    color: var(--accent);
+  }
+  :root[data-theme="dark"] .gil-breakdown-row.gil-breakdown-crafted td.num:last-child{ color: var(--accent); }
+  .gil-toggle-col{ width:2.4em; text-align:center !important; }
+  .gil-toggle-col input{ cursor:pointer; }
 
   .job-progress{ font-size:.74rem; color: var(--ink-faint); }
   .job-progress b{ color: var(--ink-soft); font-family:'IBM Plex Mono', monospace; }
@@ -1274,22 +1279,43 @@
   // simulation already assumes every component is bought, so pricing a "craft it yourself" path
   // for raw materials that were never going to be gathered is a number nobody asked for -- skip it
   // entirely rather than compute and then hide it.
+  // Per-unit raw-material cost of crafting one copy of componentId yourself, via that component's
+  // own materialDemandFor -- the same function used for the root Rarefied item, just pointed at an
+  // intermediate component instead. Missing prices contribute 0 (and get merged into the caller's
+  // `missing` set) rather than nulling the whole number out, matching how every other cost here
+  // treats an unpriced item as a gap to flag rather than a reason to give up on the estimate.
+  function craftCostPerUnit(componentId, priceLookup, isFreeGathered, missing){
+    var demand = materialDemandFor(componentId);
+    var cost = 0;
+    Object.keys(demand.leaves).forEach(function(rawId){
+      if(isFreeGathered(rawId)) return;
+      var price = priceLookup(rawId);
+      if(price == null) missing[rawId] = true; else cost += price * demand.leaves[rawId];
+    });
+    return cost;
+  }
+
   function jobGilBreakdown(job, acc, priceLookup, isFreeGathered, craftEnabled){
     var buyCost = 0; var craftCost = 0; var missing = {};
     var buyItems = {}; var craftItems = {}; // { [itemId]: total qty needed }, for the breakdown UI
+    var buyItemUnitCost = {}; // { [itemId]: per-unit cost }, only for components set to "craft"
     acc.order.forEach(function(label){
       var count = acc.counts[label];
       if(!count) return;
       var md = materialDemandFor(itemIdForLabel(job, label));
       md.topLevel.forEach(function(pair){
-        var qty = pair[1] * count;
-        buyItems[pair[0]] = (buyItems[pair[0]] || 0) + qty;
-        // A handful of recipes use a raw material (a crystal, most often) directly as a top-level
-        // ingredient rather than through another craft -- that's still gatherable, unlike a genuine
-        // crafted component, so it gets the same treatment as anything in the raw-materials table.
-        if(!RECIPE_TREE[pair[0]] && isFreeGathered(pair[0])) return;
-        var price = priceLookup(pair[0]);
-        if(price == null) missing[pair[0]] = true; else buyCost += price * qty;
+        var itemId = pair[0]; var qty = pair[1] * count;
+        buyItems[itemId] = (buyItems[itemId] || 0) + qty;
+        var craftThis = !!RECIPE_TREE[itemId] && !!CRAFT_COMPONENT_OVERRIDES[itemId];
+        if(craftThis){
+          if(!(itemId in buyItemUnitCost)){
+            buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);
+          }
+          buyCost += buyItemUnitCost[itemId] * qty;
+          return;
+        }
+        var price = priceLookup(itemId);
+        if(price == null) missing[itemId] = true; else buyCost += price * qty;
       });
       if(!craftEnabled) return;
       Object.keys(md.leaves).forEach(function(id){
@@ -1301,7 +1327,7 @@
       });
     });
     return { buyCost: buyCost, craftCost: craftCost, missingCount: Object.keys(missing).length,
-      buyItems: buyItems, craftItems: craftItems };
+      buyItems: buyItems, craftItems: craftItems, buyItemUnitCost: buyItemUnitCost };
   }
 
   var jobGrid = document.getElementById('jobGrid');
@@ -1329,6 +1355,13 @@
   // whatever the category/sub-toggle combination would otherwise say; only touched once a player
   // actually unticks/reticks a row, so most items never get an entry here at all.
   var GATHER_ITEM_OVERRIDES = {};
+
+  // Per-component choice in the "buying/crafting components" table: true means that component's
+  // cost is recursively priced from its own raw materials (see craftCostPerUnit) instead of bought
+  // at its own market price. Only ever set for items that actually have a recipe of their own
+  // (RECIPE_TREE) -- a genuine raw material used directly as a top-level ingredient has nothing to
+  // "craft" and never gets an entry here. Defaults to buying, matching the table's baseline meaning.
+  var CRAFT_COMPONENT_OVERRIDES = {};
 
   // Builds the current isFreeGathered(itemId) predicate from the gather toggles' live checked
   // state. "gather" (regular Miner/Botanist nodes) is always free once the master toggle is on --
@@ -1658,10 +1691,8 @@
   // than re-summed from the rows here, so it always matches the summary line above it exactly.
   // showGatherColumn adds a per-item "Gather" checkbox column, shown while the master gather toggle
   // is on (with it off, isFreeGathered is always false and a column of dead checkboxes would just be
-  // noise). The buying/crafting-components table can include a raw material used directly (a
-  // crystal, most often) alongside genuine crafted components -- only rows for an actual raw
-  // material (no RECIPE_TREE entry of their own) get a checkbox; a crafted component has no
-  // "gather" option, so its cell is left empty rather than offering a checkbox that wouldn't apply.
+  // noise). Every row here is already a raw material (this renders the raw-materials table only),
+  // so unlike the buying/crafting-components table there's no per-row eligibility check needed.
   // Checking/unchecking a row writes GATHER_ITEM_OVERRIDES (see the delegated listener below) so a
   // player can exclude one specific material from "gather my own" without giving up the toggle for
   // everything else.
@@ -1672,13 +1703,12 @@
     var rows = ids.map(function(id){
       var qty = itemsMap[id];
       var price = priceLookup(id);
-      var isRawMaterial = !RECIPE_TREE[id];
-      var free = isRawMaterial && !!(isFreeGathered && isFreeGathered(id));
+      var free = !!(isFreeGathered && isFreeGathered(id));
       var subtotal = free ? 'gathered' : (price != null ? fmt(price * qty) + ' gil' : 'unpriced');
       return '<tr class="gil-breakdown-row' + (free ? ' gil-breakdown-free' : '') + '">' +
-        (showGatherColumn ? '<td class="gil-gather-col">' + (isRawMaterial ?
-          '<input type="checkbox" class="gil-item-gather-toggle" data-item-id="' + id + '"' +
-            (free ? ' checked' : '') + '>' : '') + '</td>' : '') +
+        (showGatherColumn ? '<td class="gil-toggle-col"><input type="checkbox" ' +
+          'class="gil-item-gather-toggle" data-item-id="' + id + '"' + (free ? ' checked' : '') +
+          '></td>' : '') +
         '<td><a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" ' +
           'rel="noopener">' + itemDisplayName(id) + '</a></td>' +
         '<td class="num">' + fmt(qty) + '&times;</td>' +
@@ -1688,12 +1718,46 @@
     }).join('');
     var colspan = showGatherColumn ? 4 : 3;
     return '<table class="gil-breakdown-table">' +
-      '<thead><tr>' + (showGatherColumn ? '<th class="gil-gather-col">Gather</th>' : '') +
+      '<thead><tr>' + (showGatherColumn ? '<th class="gil-toggle-col">Gather</th>' : '') +
         '<th>Item</th><th class="num">Qty</th><th class="num">Price</th>' +
         '<th class="num">Subtotal</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '<tfoot><tr><td colspan="' + colspan + '">Total</td><td class="num">' + fmt(total) +
         ' gil</td></tr></tfoot>' +
+      '</table>';
+  }
+
+  // The buying/crafting-components table's own renderer: unlike the raw-materials table, every row
+  // here can be independently switched between "buy at market price" (default) and "craft it from
+  // its own raw materials" (buyItemUnitCost, from jobGilBreakdown) -- but only for a row that's
+  // actually a crafted component (has its own RECIPE_TREE entry). A raw material used directly as a
+  // top-level ingredient (a crystal, most often) has nothing to craft, so its cell is left empty.
+  function renderBuyBreakdownRows(buyItems, buyItemUnitCost, priceLookup, world, total){
+    var ids = Object.keys(buyItems);
+    if(!ids.length) return '<div class="gil-breakdown-empty">Nothing to buy for this strategy.</div>';
+    ids.sort(function(a, b){ return itemDisplayName(a).localeCompare(itemDisplayName(b)); });
+    var rows = ids.map(function(id){
+      var qty = buyItems[id];
+      var canCraft = !!RECIPE_TREE[id];
+      var crafting = canCraft && (id in buyItemUnitCost);
+      var price = crafting ? buyItemUnitCost[id] : priceLookup(id);
+      var subtotal = price != null ? fmt(price * qty) + ' gil' : 'unpriced';
+      return '<tr class="gil-breakdown-row' + (crafting ? ' gil-breakdown-crafted' : '') + '">' +
+        '<td class="gil-toggle-col">' + (canCraft ?
+          '<input type="checkbox" class="gil-item-craft-toggle" data-item-id="' + id + '"' +
+            (crafting ? ' checked' : '') + '>' : '') + '</td>' +
+        '<td><a class="brk-name" href="' + universalisItemUrl(id, world) + '" target="_blank" ' +
+          'rel="noopener">' + itemDisplayName(id) + '</a></td>' +
+        '<td class="num">' + fmt(qty) + '&times;</td>' +
+        '<td class="num">' + (price != null ? fmt(price) + ' gil' : '--') + '</td>' +
+        '<td class="num">' + subtotal + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<table class="gil-breakdown-table">' +
+      '<thead><tr><th class="gil-toggle-col">Craft</th><th>Item</th><th class="num">Qty</th>' +
+        '<th class="num">Price</th><th class="num">Subtotal</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '<tfoot><tr><td colspan="4">Total</td><td class="num">' + fmt(total) + ' gil</td></tr></tfoot>' +
       '</table>';
   }
 
@@ -1726,8 +1790,7 @@
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/crafting components</div>' +
-            renderGilBreakdownRows(b.buyItems, priceLookup, world, b.buyCost, isFreeGathered,
-              gatherOwnCheckbox.checked) +
+            renderBuyBreakdownRows(b.buyItems, b.buyItemUnitCost, priceLookup, world, b.buyCost) +
           '</div>' +
           (craftEnabled ? '<div class="gil-breakdown-group">' +
             '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +
@@ -1914,6 +1977,22 @@
     }
   }
 
+  var CRAFT_OVERRIDES_STORAGE_KEY = 'ffxiv-collectable-ledger-craft-overrides-v1';
+  function saveCraftOverridesToLocalStorage(){
+    try{ localStorage.setItem(CRAFT_OVERRIDES_STORAGE_KEY, JSON.stringify(CRAFT_COMPONENT_OVERRIDES)); }
+    catch(e){ console.warn('Could not save your per-component craft choices to this browser:', e); }
+  }
+  function loadCraftOverridesFromLocalStorage(){
+    try{
+      var raw = localStorage.getItem(CRAFT_OVERRIDES_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      console.warn('Could not load your saved per-component craft choices (corrupted or blocked ' +
+        'storage):', e);
+      return {};
+    }
+  }
+
   var PRICE_CACHE_STORAGE_KEY = 'ffxiv-collectable-ledger-price-cache-v1';
   function savePriceCacheToLocalStorage(){
     try{ localStorage.setItem(PRICE_CACHE_STORAGE_KEY, JSON.stringify(GIL_PRICE_CACHE)); }
@@ -2075,19 +2154,28 @@
     updateGatherSubTogglesVisibility();
   })();
   GATHER_ITEM_OVERRIDES = loadGatherOverridesFromLocalStorage();
+  CRAFT_COMPONENT_OVERRIDES = loadCraftOverridesFromLocalStorage();
   GIL_PRICE_CACHE = loadPriceCacheFromLocalStorage();
   ITEM_NAME_CACHE = loadItemNameCacheFromLocalStorage();
 
   // Delegated because the breakdown table (and every checkbox in it) is fully rebuilt by every
   // recalcAll -- a listener bound to a specific checkbox would be destroyed along with it. Attached
   // to body (below jobGrid's own delegated input listener in the bubble path) so its recalcAll()
-  // always runs after GATHER_ITEM_OVERRIDES has been updated, not before.
+  // always runs after GATHER_ITEM_OVERRIDES/CRAFT_COMPONENT_OVERRIDES has been updated, not before.
   document.body.addEventListener('input', function(e){
-    var cb = e.target.closest('.gil-item-gather-toggle');
-    if(!cb) return;
-    GATHER_ITEM_OVERRIDES[cb.dataset.itemId] = cb.checked;
-    recalcAll();
-    saveGatherOverridesToLocalStorage();
+    var gatherCb = e.target.closest('.gil-item-gather-toggle');
+    if(gatherCb){
+      GATHER_ITEM_OVERRIDES[gatherCb.dataset.itemId] = gatherCb.checked;
+      recalcAll();
+      saveGatherOverridesToLocalStorage();
+      return;
+    }
+    var craftCb = e.target.closest('.gil-item-craft-toggle');
+    if(craftCb){
+      CRAFT_COMPONENT_OVERRIDES[craftCb.dataset.itemId] = craftCb.checked;
+      recalcAll();
+      saveCraftOverridesToLocalStorage();
+    }
   });
 
   loadWorldReferenceData();

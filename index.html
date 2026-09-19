@@ -198,13 +198,13 @@
     20-80 stretch instead. From 71 onward, Cosmic Exploration is still an option, but this tool
     models the collectable route. It assumes 100% quality (+300% bonus EXP) and no external buffs
     like rested EXP or food. "Craft my own components" (experimental) recursively prices out that
-    collectable's full ingredient tree at 0% quality, unlocking in 71-74 / 75-80 / 81-84 / 85-90 /
-    91-94 / 95-100 brackets as each bracket's intermediate recipes become available -- below a
-    bracket's floor, components are bought instead, same as with the toggle off. All 8 jobs are
-    simulated through those brackets together: EXP a job earns for other jobs while crafting its
-    own components (priced using each job's level at the start of the bracket) is baked back into
-    their level progress within that same bracket, not a full turn-in-by-turn-in simulation of
-    every job leveling in lockstep.
+    collectable's full ingredient tree at 0% quality, skipping any individual component whose own
+    recipe level is still out of reach (bought instead, same as with the toggle off) -- most
+    components sit at or under their collectable's own level, but a few need one level more. All 8
+    jobs are simulated together in a handful of level windows: EXP a job earns for other jobs while
+    crafting its own components (priced using each job's level at the start of the window) is baked
+    back into their level progress within that same window, not a full turn-in-by-turn-in
+    simulation of every job leveling in lockstep.
   </p>
 
   <footer>
@@ -240,14 +240,6 @@
   // can't silently drift out of sync with it.
   var LEVELS_ASC = Object.keys(EXP_BY_LEVEL).map(Number).sort(function(a, b){ return a - b; });
 
-  // Component-crafting doesn't unlock all at once: each bracket's intermediate recipes only
-  // become available at the bracket's floor level (74 -> 75-80, 80 -> 81-84, 84 -> 85-90, etc.),
-  // so a job crafting its own components moves through 71-100 in 4/6/4/6/4/6-level brackets
-  // rather than being able to self-craft every tier from level 71 onward. Below the threshold for
-  // a given collectable, component crafting for it isn't available yet even with the toggle on --
-  // it's simply bought instead, same as with the toggle off.
-  var COMPONENT_UNLOCK_THRESHOLD = {72:71, 74:71, 76:75, 78:75, 80:75, 81:81, 83:81,
-    85:85, 87:85, 89:85, 90:85, 91:91, 93:91, 95:95, 97:95, 99:95, 100:95};
 
   var CLASS_ITEMS = {
     Carpenter: {72:"White Oak Partisan", 74:"Applewood Staff", 76:"White Ash Earrings", 78:"Sandteak Fauchard",
@@ -763,12 +755,16 @@
 
   // Splits an exploded component list into EXP the acting job earns on its own components (which
   // feeds back into that job's own turn-in countdown, same as the collectable craft itself) and
-  // EXP other jobs passively pick up (informational only -- see the craft-toggle note in the UI;
-  // it isn't threaded back into those other jobs' own simulations, which use their entered level).
+  // EXP other jobs generate for each other, keyed by ClassJob abbreviation for simulateAllJobs to
+  // credit. A component can't be crafted -- by anyone -- below its own recipe level (almost always
+  // at or under the tier's own unlock level, but occasionally one level over, since a tier's parts
+  // aren't guaranteed to all sit at or under its own recipe level); skip it entirely rather than
+  // crediting EXP nobody could actually have earned yet.
   function craftComponentsExp(explosion, actingJobAbbr, actingLevel, otherJobLevels){
     var ownBonus = 0; var crossJobExp = {};
     explosion.forEach(function(node){
       var jobLevel = node.job === actingJobAbbr ? actingLevel : (otherJobLevels[node.job] || 1);
+      if(jobLevel < node.level) return;
       var exp = craftCompletionExpZeroQuality(node.level, jobLevel) * node.crafts;
       if(node.job === actingJobAbbr){ ownBonus += exp; }
       else { crossJobExp[node.job] = (crossJobExp[node.job] || 0) + exp; }
@@ -776,18 +772,19 @@
     return { ownBonus: ownBonus, crossJobExp: crossJobExp };
   }
 
-  // All 8 jobs are simulated together bracket by bracket (see COMPONENT_UNLOCK_THRESHOLD) instead
-  // of independently, so component-crafting EXP a job generates for other jobs can actually be
+  // All 8 jobs are simulated together bracket by bracket (see LEVEL_BRACKETS below) instead of
+  // independently, so component-crafting EXP a job generates for other jobs can actually be
   // credited to them -- not just reported as an informational aside. simulateUpTo runs ONE job
   // through turn-ins from (startLevel, startRemaining) up to a ceiling (a bracket boundary, or the
   // job's own target if that comes first), carrying leftover EXP forward and switching to a
   // better-paying collectable the instant it unlocks. Levels below 71 have no collectable yet, so
   // that stretch is tallied separately as plain EXP. Each turn-in also earns craft-completion EXP
   // for the craft itself (100% quality, no external buffs), on top of the appraiser's collectability
-  // reward. When craftComponents is on and this bracket's component recipes are unlocked, every
-  // turn-in also crafts that item's full component tree at 0% quality: same-job component EXP
-  // folds into this job's own craftExp, while other jobs' shares are returned in crossJobExpGiven
-  // (keyed by ClassJob abbreviation) for the caller to credit at the start of the next bracket.
+  // reward. When craftComponents is on, every turn-in also crafts that item's full component tree
+  // at 0% quality (skipping any component whose own recipe level is still out of reach -- see
+  // craftComponentsExp): same-job component EXP folds into this job's own craftExp, while other
+  // jobs' shares are returned in crossJobExpGiven (keyed by ClassJob abbreviation) for the caller
+  // to credit.
   function simulateUpTo(job, jobAbbr, startLevel, startRemaining, ceiling, craftComponents, otherJobLevels){
     var tiers = tiersFor(job);
     var simLevel = startLevel; var remaining = startRemaining; var guard = 0;
@@ -808,8 +805,7 @@
       counts[tier.label]++;
       var thisCraftExp = craftCompletionExp(tier.level, simLevel);
       var componentExp = 0;
-      var componentsUnlocked = simLevel >= (COMPONENT_UNLOCK_THRESHOLD[tier.level] || tier.unlockLevel);
-      if(craftComponents && componentsUnlocked){
+      if(craftComponents){
         var split = craftComponentsExp(explodeComponents(tier.itemId), jobAbbr, simLevel, otherJobLevels || {});
         componentExp = split.ownBonus;
         Object.keys(split.crossJobExp).forEach(function(abbr){
@@ -856,10 +852,11 @@
     });
   }
 
-  // Component recipes unlock in brackets (see COMPONENT_UNLOCK_THRESHOLD), and players level every
-  // job through a bracket before the next one unlocks -- so this steps all 8 jobs through the
-  // brackets together. Every job's cross-job EXP within a bracket is priced using every other
-  // job's level at the *start* of that bracket (a fixed snapshot, not updated turn-in by turn-in).
+  // Repricing cross-job EXP after every single turn-in across all 8 jobs would be needlessly slow
+  // and arbitrary about whose turn-in "happens first" at a given moment, so progress is instead
+  // settled in a handful of windows -- these brackets, one per collectable tier grouping. Every
+  // job's cross-job EXP within a bracket is priced using every other job's level at the *start* of
+  // that bracket (a fixed snapshot, not updated turn-in by turn-in).
   //
   // Rather than carrying a bracket's cross-job EXP forward into the next bracket, it's baked into
   // the *same* bracket via two passes: pass 1 measures every active job's bracket performance off
@@ -871,7 +868,7 @@
   // turn-in count, and so exactly how much it re-generates for others, can shift slightly once its
   // own head start is applied), but it's a much closer approximation than deferring a whole bracket,
   // and it means every bracket -- including the last -- fully resolves its own spillover.
-  var LEVEL_BRACKETS = [71, 75, 81, 85, 91, 95, 101].reduce(function(brackets, floor, i, arr){
+  var LEVEL_BRACKETS = [70, 74, 80, 84, 90, 94, 101].reduce(function(brackets, floor, i, arr){
     if(i < arr.length - 1) brackets.push({ floor: floor, nextFloor: arr[i + 1] });
     return brackets;
   }, []);

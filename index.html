@@ -1716,11 +1716,11 @@
         '<details class="gil-details">' +
           '<summary>Price breakdown</summary>' +
           '<div class="gil-breakdown-group">' +
-            '<div class="gil-breakdown-title">Buying components</div>' +
+            '<div class="gil-breakdown-title">Buying/crafting components</div>' +
             renderGilBreakdownRows(b.buyItems, priceLookup, world, b.buyCost) +
           '</div>' +
           (craftEnabled ? '<div class="gil-breakdown-group">' +
-            '<div class="gil-breakdown-title">Crafting your own (raw materials)</div>' +
+            '<div class="gil-breakdown-title">Buying/gathering raw materials</div>' +
             renderGilBreakdownRows(b.craftItems, priceLookup, world, b.craftCost, isFreeGathered,
               gatherOwnCheckbox.checked) +
           '</div>' : '') +

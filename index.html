@@ -148,6 +148,11 @@
   }
   .copy-btn:hover{ background: color-mix(in srgb, var(--teal) 18%, var(--teal-soft)); }
   .copy-flag{ font-size:.76rem; color: var(--teal); font-weight:600; }
+  .list-link{
+    font-size:.78rem; color: var(--ink-soft); text-decoration:none;
+    border-bottom:1px solid var(--line); transition: color .12s, border-color .12s;
+  }
+  .list-link:hover, .list-link:focus-visible{ color: var(--teal); border-bottom-color: var(--teal); }
 
   .hint{ font-size:.78rem; color: var(--ink-faint); line-height:1.6; }
   footer{ font-size:.76rem; color: var(--ink-faint); line-height:1.6; text-align:center; }
@@ -570,6 +575,8 @@
           '<button type="button" class="copy-btn" data-copy="' + combinedUrl.replace(/"/g, '&quot;') + '">' +
             'Copy consolidated TeamCraft import link</button>' +
           '<span class="copy-flag" hidden>Copied!</span>' +
+          '<a class="list-link" href="https://ffxivteamcraft.com/lists" target="_blank" rel="noopener">' +
+            'Open TeamCraft lists</a>' +
         '</div>';
     } else {
       consolidatedBar.hidden = true;

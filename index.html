@@ -143,9 +143,9 @@
 <div class="wrap">
 
   <header class="top">
-    <span class="eyebrow">Disciples of the Hand · EXP planner</span>
+    <span class="eyebrow">FFXIV Disciples of the Hand · EXP planner</span>
     <h1>Collectable Leveling Ledger</h1>
-    <p class="sub">Enter each crafting job's current level and current EXP in that level. The ledger takes it from there — for every job, at max collectability, it works out exactly how many of each Rarefied collectable to craft and turn in the rest of the way to level 100 (or an earlier target level, if you set one).</p>
+    <p class="sub">Enter each crafting job's current level and current EXP in that level. The ledger takes it from there — for every job, it works out exactly how many of each Rarefied collectable to craft and turn in to level 100 (or an earlier target level, if you set one).</p>
   </header>
 
   <div class="summary-bar" id="summaryBar"></div>
@@ -154,10 +154,10 @@
 
   <div class="summary-bar consolidated-bar" id="consolidatedBar"></div>
 
-  <p class="hint">EXP-to-level uses the game's own level curve (e.g. level 82 needs exactly 6,942,000 EXP to clear). Collectable rewards are the real max-collectability numbers from FFXIV Teamcraft for each job's Lv 81–100 Rarefied items — identical across all eight jobs, only the item differs. Below level 81 there's no collectable to turn in yet, so that stretch is counted as plain EXP -- Ishgardian Restoration (levels 21-80) is the recommended way to earn it. The turn-in reward isn't the only EXP a cycle gives, though: crafting the item itself also grants ordinary completion EXP, and that's now baked into every turn-in too -- computed from the game's own base-EXP-per-recipe-level and level-difference tables, assuming 100% quality (the same +300% max-quality bonus max collectability implies) and no external buffs like rested EXP or food, which we're deliberately leaving out since they're not steady-state.</p>
+  <p class="hint">Below level 81, it's more efficient to do Ishgardian Restoration (levels 21-80), and Logs before then. This tool assumes 100% quality (+300% bonus EXP) and no external buffs like rested EXP or food.</p>
 
   <footer>
-Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a real, correctly-quantified list in one step. Source for collectable EXP: Teamcraft's collectables data (ffxivteamcraft.com/collectables), read at max collectability per item. Your inputs are saved to this browser only (via localStorage) so they're still here next time you visit -- nothing is sent anywhere, and a different browser or device starts fresh.
+Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft import link" copies a Garland Tools-format list link with every item and its exact quantity already encoded -- paste it into Teamcraft under Lists &rarr; the import icon &rarr; "paste your link to the external list" to build a list.
   </footer>
 </div>
 
@@ -293,7 +293,7 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
     var tiers = tiersFor(job);
     level = Math.max(1, Math.min(100, Math.round(level) || 1));
     target = Math.max(1, Math.min(100, Math.round(target) || 100));
-    if(level >= target){ return { done: true, alreadyThere: true, target: target }; }
+    if(level >= target){ return { done: true, alreadyThere: target !== 100, target: target }; }
 
     var expAtCur = EXP_TO_NEXT[level] || 0;
     var remaining = Math.max(0, expAtCur - Math.max(0, exp || 0));
@@ -394,8 +394,8 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
       '</div>';
     }
     if(result.preExp > 0){
-      html += '<div class="job-note">No collectable yet below level 81 -- Ishgardian Restoration (levels 21-80) is the recommended way to earn the roughly <b class="num">' +
-        fmt(result.preExp) + '</b> EXP needed to get there, then switch to turn-ins below.</div>';
+      html += '<div class="job-note">Ishgardian Restoration (levels 21-80) is the recommended way to earn the roughly <b class="num">' +
+        fmt(result.preExp) + '</b> EXP needed to get there, then switch to collectable turn-ins below.</div>';
     }
     html += '<div class="job-breakdown">';
     result.order.forEach(function(label){

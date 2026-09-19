@@ -65,6 +65,7 @@
 
   .consolidated-bar{ flex-direction:column; align-items:flex-start; gap:10px; border-color: var(--accent); }
   .consolidated-bar .summary-item .val{ font-size:1.05rem; }
+  .consolidated-bar[hidden]{ display:none; }
 
   .job-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; }
 
@@ -464,11 +465,12 @@ Each item name links straight to its FFXIV Teamcraft item page. "Copy Teamcraft 
     });
     var grandExpTotal = grandTurnInExp + grandCraftExp;
     var grandTurnInPct = grandExpTotal > 0 ? Math.round(grandTurnInExp / grandExpTotal * 100) : 0;
+    var grandCraftPct = grandExpTotal > 0 ? (100 - grandTurnInPct) : 0;
     summaryBar.innerHTML =
       '<div class="summary-item"><span class="lbl">Jobs still leveling</span><span class="val num">' + jobsInProgress + ' / 8</span></div>' +
       '<div class="summary-item"><span class="lbl">Total turn-ins, all jobs</span><span class="val num">' + fmt(grandTotal) + '</span></div>' +
       '<div class="summary-item"><span class="lbl">EXP from turn-ins</span><span class="val num">' + fmt(grandTurnInExp) + ' (' + grandTurnInPct + '%)</span></div>' +
-      '<div class="summary-item"><span class="lbl">EXP from crafting</span><span class="val num">' + fmt(grandCraftExp) + ' (' + (100 - grandTurnInPct) + '%)</span></div>';
+      '<div class="summary-item"><span class="lbl">EXP from crafting</span><span class="val num">' + fmt(grandCraftExp) + ' (' + grandCraftPct + '%)</span></div>';
 
     if(perJobResults.length){
       var combinedUrl = buildCombinedGarlandImportLink(perJobResults);

@@ -1926,8 +1926,8 @@
         '<span class="val num">' + fmt(totalBuy - totalCraft) + ' gil</span></div>' : '') +
       (totalMissing ? '<div class="summary-item"><span class="lbl">Unpriced items</span>' +
         '<span class="val num">' + totalMissing + '</span></div>' +
-        '<div class="gil-note">Some items are missing prices -- click "Fetch gil prices" below to ' +
-        'try again.</div>' : '');
+        '<div class="gil-note">Some item prices are missing -- click "Fetch gil prices" below' +
+          '</div>' : '');
 
     gilReceipt.hidden = false;
     var receiptWasOpen = gilReceipt.querySelector('.gil-details') && gilReceipt.querySelector('.gil-details').open;

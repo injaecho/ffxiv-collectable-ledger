@@ -1465,10 +1465,12 @@
           (itemId in CRAFT_COMPONENT_OVERRIDES ? CRAFT_COMPONENT_OVERRIDES[itemId] : craftEnabled);
         // buyItemUnitCost only feeds the breakdown table's per-row "craft this instead" toggle --
         // buyCost itself always prices every top-level item at its own market price (matching
-        // "Total cost to buy all" in that table, and craftCost below, its "craft everything"
-        // counterpart), regardless of which components are individually set to craft. Folding craft
-        // costs into buyCost here used to make "Buying components" silently track whatever mix of
-        // craft toggles happened to be on, wildly understating what buying everything actually costs.
+        // "Total cost to buy all" in that table), regardless of which components are individually
+        // set to craft. Folding craft costs into buyCost here used to make "Buying components"
+        // silently track whatever mix of craft toggles happened to be on, wildly understating what
+        // buying everything actually costs. craftCost below is the opposite: it DOES follow the
+        // current per-component mix, since it prices the raw-materials table, which is exactly
+        // "what do I actually need to go gather/buy right now."
         if(craftThis && !(itemId in buyItemUnitCost)){
           buyItemUnitCost[itemId] = craftCostPerUnit(itemId, priceLookup, isFreeGathered, missing);
         }
@@ -1484,12 +1486,29 @@
         if(price == null) missing[itemId] = true; else buyCost += price * qty;
       });
       if(!craftEnabled) return;
-      Object.keys(md.leaves).forEach(function(id){
-        var qty = md.leaves[id] * count;
-        craftItems[id] = (craftItems[id] || 0) + qty;
-        if(isFreeGathered(id)) return;
-        var price = priceLookup(id);
-        if(price == null) missing[id] = true; else craftCost += price * qty;
+      // Raw materials actually needed under the current per-component craft/buy choices, rather
+      // than md.leaves' "as if every component were crafted" total: a component set to "buy"
+      // (craftThis false) contributes nothing here -- its own market cost is already counted in
+      // buyCost/buyItems above -- so its own ingredients (e.g. the Acacia Logs behind a bought
+      // Acacia Lumber) drop out of this list entirely instead of being demanded alongside it.
+      md.topLevel.forEach(function(pair){
+        var itemId = pair[0]; var qty = pair[1] * count;
+        var hasRecipe = !!RECIPE_TREE[itemId];
+        var leaves;
+        if(!hasRecipe){
+          leaves = {}; leaves[itemId] = 1; // the ingredient itself is the raw material
+        } else {
+          var craftThis = itemId in CRAFT_COMPONENT_OVERRIDES ? CRAFT_COMPONENT_OVERRIDES[itemId] : craftEnabled;
+          if(!craftThis) return;
+          leaves = materialDemandFor(itemId).leaves;
+        }
+        Object.keys(leaves).forEach(function(rawId){
+          var rawQty = leaves[rawId] * qty;
+          craftItems[rawId] = (craftItems[rawId] || 0) + rawQty;
+          if(isFreeGathered(rawId)) return;
+          var price = priceLookup(rawId);
+          if(price == null) missing[rawId] = true; else craftCost += price * rawQty;
+        });
       });
     });
     return { buyCost: buyCost, craftCost: craftCost, missingCount: Object.keys(missing).length,

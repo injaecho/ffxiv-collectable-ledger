@@ -228,10 +228,12 @@
   }
   .brk-row:last-child{ border-bottom:none; }
   .brk-name{
+    display:flex; align-items:center; gap:8px; min-width:0;
     color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid transparent;
     transition: color .12s, border-color .12s;
   }
   .brk-name:hover, .brk-name:focus-visible{ color: var(--teal); border-bottom-color: var(--teal); }
+  .brk-icon{ flex:none; border-radius:4px; background: var(--paper-sunken); }
   .brk-count{ font-family:'IBM Plex Mono', monospace; font-weight:600; flex:none; }
 
   .job-note{
@@ -473,6 +475,52 @@
       81:35656,83:35657,85:35658,87:35659,89:35660,90:36625,91:44221,93:44222,95:44223,97:44224,99:44225,100:44226},
     Culinarian: {72:31086,74:31087,76:31088,78:31089,80:31659,
       81:35661,83:35662,85:35663,87:35664,89:35665,90:36626,91:44227,93:44228,95:44229,97:44230,99:44231,100:44232}
+  };
+
+  // XIVAPI icon paths for each Rarefied collectable, keyed the same way as ITEM_IDS. Fetched once
+  // from xivapi.com/Item/{id}?columns=Icon and hardcoded here so the crafting-log icons render
+  // without an extra runtime API round-trip per item.
+  var ITEM_ICONS = {
+    Carpenter: {72:"/i/031000/031989.png",74:"/i/033000/033124.png",76:"/i/055000/055441.png",
+      78:"/i/031000/031980.png",80:"/i/035000/035369.png",81:"/i/041000/041888.png",83:"/i/055000/055843.png",
+      85:"/i/035000/035569.png",87:"/i/035000/035360.png",89:"/i/055000/055857.png",90:"/i/038000/038247.png",
+      91:"/i/055000/055532.png",93:"/i/031000/031655.png",95:"/i/055000/055081.png",97:"/i/032000/032883.png",
+      99:"/i/035000/035369.png",100:"/i/038000/038511.png"},
+    Blacksmith: {72:"/i/030000/030613.png",74:"/i/035000/035767.png",76:"/i/036000/036037.png",
+      78:"/i/038000/038035.png",80:"/i/038000/038130.png",81:"/i/034000/034423.png",83:"/i/034000/034371.png",
+      85:"/i/038000/038068.png",87:"/i/035000/035143.png",89:"/i/035000/035758.png",90:"/i/035000/035343.png",
+      91:"/i/030000/030841.png",93:"/i/031000/031253.png",95:"/i/030000/030682.png",97:"/i/035000/035666.png",
+      99:"/i/037000/037261.png",100:"/i/039000/039408.png"},
+    Armorer: {72:"/i/048000/048195.png",74:"/i/040000/040840.png",76:"/i/048000/048762.png",
+      78:"/i/030000/030194.png",80:"/i/035000/035630.png",81:"/i/030000/030814.png",83:"/i/030000/030232.png",
+      85:"/i/035000/035747.png",87:"/i/042000/042785.png",89:"/i/047000/047259.png",90:"/i/035000/035642.png",
+      91:"/i/039000/039604.png",93:"/i/049000/049745.png",95:"/i/039000/039707.png",97:"/i/057000/057123.png",
+      99:"/i/049000/049688.png",100:"/i/054000/054735.png"},
+    Goldsmith: {72:"/i/036000/036795.png",74:"/i/034000/034930.png",76:"/i/055000/055439.png",
+      78:"/i/040000/040336.png",80:"/i/054000/054658.png",81:"/i/037000/037020.png",83:"/i/055000/055041.png",
+      85:"/i/055000/055480.png",87:"/i/041000/041876.png",89:"/i/055000/055047.png",90:"/i/035000/035543.png",
+      91:"/i/032000/032040.png",93:"/i/056000/056734.png",95:"/i/036000/036859.png",97:"/i/055000/055089.png",
+      99:"/i/034000/034993.png",100:"/i/055000/055534.png"},
+    Leatherworker: {72:"/i/047000/047608.png",74:"/i/049000/049057.png",76:"/i/041000/041431.png",
+      78:"/i/044000/044715.png",80:"/i/043000/043877.png",81:"/i/049000/049435.png",83:"/i/046000/046073.png",
+      85:"/i/044000/044915.png",87:"/i/049000/049381.png",89:"/i/043000/043934.png",90:"/i/044000/044918.png",
+      91:"/i/056000/056195.png",93:"/i/049000/049751.png",95:"/i/056000/056255.png",97:"/i/057000/057648.png",
+      99:"/i/057000/057590.png",100:"/i/056000/056724.png"},
+    Weaver: {72:"/i/043000/043872.png",74:"/i/043000/043890.png",76:"/i/041000/041783.png",
+      78:"/i/043000/043881.png",80:"/i/041000/041446.png",81:"/i/041000/041908.png",83:"/i/044000/044924.png",
+      85:"/i/042000/042796.png",87:"/i/041000/041883.png",89:"/i/047000/047833.png",90:"/i/041000/041523.png",
+      91:"/i/056000/056688.png",93:"/i/057000/057130.png",95:"/i/057000/057660.png",97:"/i/056000/056713.png",
+      99:"/i/056000/056190.png",100:"/i/057000/057642.png"},
+    Alchemist: {72:"/i/022000/022680.png",74:"/i/033000/033296.png",76:"/i/033000/033311.png",
+      78:"/i/024000/024411.png",80:"/i/033000/033300.png",81:"/i/033000/033351.png",83:"/i/033000/033340.png",
+      85:"/i/022000/022695.png",87:"/i/025000/025924.png",89:"/i/020000/020712.png",90:"/i/033000/033345.png",
+      91:"/i/037000/037803.png",93:"/i/022000/022682.png",95:"/i/037000/037814.png",97:"/i/020000/020712.png",
+      99:"/i/020000/020707.png",100:"/i/037000/037605.png"},
+    Culinarian: {72:"/i/024000/024352.png",74:"/i/024000/024027.png",76:"/i/024000/024112.png",
+      78:"/i/024000/024407.png",80:"/i/024000/024404.png",81:"/i/024000/024037.png",83:"/i/024000/024329.png",
+      85:"/i/024000/024405.png",87:"/i/024000/024258.png",89:"/i/024000/024072.png",90:"/i/024000/024073.png",
+      91:"/i/024000/024355.png",93:"/i/024000/024227.png",95:"/i/024000/024068.png",97:"/i/024000/024334.png",
+      99:"/i/024000/024372.png",100:"/i/024000/024046.png"}
   };
 
   // Job full-name <-> XIVAPI ClassJob abbreviation, needed once component crafting can credit
@@ -809,6 +857,12 @@
       LABEL_TO_LEVEL_CACHE[job] = map;
     }
     return ITEM_IDS[job][LABEL_TO_LEVEL_CACHE[job][label]];
+  }
+
+  function itemIconUrl(job, label){
+    itemIdForLabel(job, label); // ensures LABEL_TO_LEVEL_CACHE[job] is populated
+    var icon = ITEM_ICONS[job][LABEL_TO_LEVEL_CACHE[job][label]];
+    return icon ? 'https://xivapi.com' + icon : '';
   }
 
   function teamcraftItemUrl(job, label){
@@ -1626,8 +1680,10 @@
     html += '<div class="job-breakdown">';
     acc.order.forEach(function(label){
       var url = teamcraftItemUrl(job, label);
-      html += '<div class="brk-row"><a class="brk-name" href="' + url + '" target="_blank" rel="noopener">' + label +
-        '</a><span class="brk-count num">' + fmt(acc.counts[label]) + '×</span></div>';
+      var iconUrl = itemIconUrl(job, label);
+      html += '<div class="brk-row"><a class="brk-name" href="' + url + '" target="_blank" rel="noopener">' +
+        (iconUrl ? '<img class="brk-icon" src="' + iconUrl + '" alt="" width="32" height="32" loading="lazy">' : '') +
+        label + '</a><span class="brk-count num">' + fmt(acc.counts[label]) + '×</span></div>';
     });
     html += '</div>';
     html += '<div class="import-row">' +

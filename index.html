@@ -1520,6 +1520,18 @@
     jobGrid.appendChild(card);
   });
 
+  // Caps the Current EXP field at the digit count of the EXP actually needed for the current level
+  // (e.g. a 3,000,000-EXP level allows up to 7 digits, not the literal 3,000,000 ceiling) -- loose
+  // enough to not nag over the exact number, tight enough to stop wildly out-of-range typos.
+  function clampExpInput(card){
+    var levelInput = card.querySelector('[data-f="level"]');
+    var expInput = card.querySelector('[data-f="exp"]');
+    var level = Math.max(1, Math.min(100, Math.round(parseFloat(levelInput.value)) || 1));
+    var cap = Math.pow(10, String(EXP_TO_NEXT[level] || 0).length) - 1;
+    expInput.max = cap;
+    if(expInput.value !== '' && Number(expInput.value) > cap) expInput.value = cap;
+  }
+
   // Reads one card's raw inputs -- no DOM writes, no simulation. recalcAll gathers every card's
   // inputs this way before calling simulateAllJobs once for all 8 jobs together.
   function readJobInputs(card){
@@ -2132,6 +2144,7 @@
         card.querySelector('[data-f="craftComponents"]').checked = !!s.craftComponents;
       });
     }
+    jobGrid.querySelectorAll('.job-card').forEach(clampExpInput);
     recalcAll();
   }
 
@@ -2152,7 +2165,9 @@
   // One listener instead of two separate full-DOM-pass handlers per keystroke; the save itself is
   // debounced since localStorage.setItem is synchronous and doesn't need to run on every keystroke.
   var saveDebounceTimer = null;
-  jobGrid.addEventListener('input', function(){
+  jobGrid.addEventListener('input', function(e){
+    var card = e.target.closest('.job-card');
+    if(card) clampExpInput(card);
     recalcAll();
     clearTimeout(saveDebounceTimer);
     saveDebounceTimer = setTimeout(saveToLocalStorage, 400);

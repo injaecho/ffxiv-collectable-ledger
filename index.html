@@ -1520,17 +1520,41 @@
     jobGrid.appendChild(card);
   });
 
-  // Caps the Current EXP field at the digit count of the EXP actually needed for the current level
-  // (e.g. a 3,000,000-EXP level allows up to 7 digits, not the literal 3,000,000 ceiling) -- loose
-  // enough to not nag over the exact number, tight enough to stop wildly out-of-range typos.
-  function clampExpInput(card){
+  // How many digits the Current EXP field allows for a card's current level -- the digit count of
+  // the EXP actually needed at that level (e.g. a 3,000,000-EXP level allows up to 7 digits), not the
+  // literal ceiling. Loose enough to not nag over the exact number, tight enough to catch typos.
+  function expDigitCap(card){
     var levelInput = card.querySelector('[data-f="level"]');
-    var expInput = card.querySelector('[data-f="exp"]');
     var level = Math.max(1, Math.min(100, Math.round(parseFloat(levelInput.value)) || 1));
-    var cap = Math.pow(10, String(EXP_TO_NEXT[level] || 0).length) - 1;
+    return String(EXP_TO_NEXT[level] || 0).length;
+  }
+
+  // Only re-syncs the field's own `max` and reins in a value that's now stale after the LEVEL
+  // changed out from under it (shrinking the digit budget) -- typing past the digit cap in the exp
+  // field itself is blocked outright by the beforeinput listener below, never let through and
+  // truncated after the fact.
+  function updateExpMax(card){
+    var expInput = card.querySelector('[data-f="exp"]');
+    var cap = Math.pow(10, expDigitCap(card)) - 1;
     expInput.max = cap;
     if(expInput.value !== '' && Number(expInput.value) > cap) expInput.value = cap;
   }
+
+  // Blocks a keystroke/paste/IME insertion into the exp field outright once it would push the value
+  // past its digit cap, instead of letting it land and snapping the value back afterward -- keeps the
+  // field from ever visibly showing an out-of-range value mid-edit. Deletions (e.data === null) are
+  // always allowed through. Falls back to treating the caret as being at the end of the value when
+  // selectionStart/End aren't available (some browsers don't expose them for type="number").
+  jobGrid.addEventListener('beforeinput', function(e){
+    var expInput = e.target;
+    if(!expInput.matches || !expInput.matches('[data-f="exp"]') || e.data == null) return;
+    var card = expInput.closest('.job-card');
+    var current = expInput.value;
+    var start = expInput.selectionStart, end = expInput.selectionEnd;
+    if(start == null || end == null){ start = current.length; end = current.length; }
+    var next = (current.slice(0, start) + e.data + current.slice(end)).replace(/\D/g, '');
+    if(next.length > expDigitCap(card)) e.preventDefault();
+  });
 
   // Reads one card's raw inputs -- no DOM writes, no simulation. recalcAll gathers every card's
   // inputs this way before calling simulateAllJobs once for all 8 jobs together.
@@ -2144,7 +2168,7 @@
         card.querySelector('[data-f="craftComponents"]').checked = !!s.craftComponents;
       });
     }
-    jobGrid.querySelectorAll('.job-card').forEach(clampExpInput);
+    jobGrid.querySelectorAll('.job-card').forEach(updateExpMax);
     recalcAll();
   }
 
@@ -2167,7 +2191,7 @@
   var saveDebounceTimer = null;
   jobGrid.addEventListener('input', function(e){
     var card = e.target.closest('.job-card');
-    if(card) clampExpInput(card);
+    if(card) updateExpMax(card);
     recalcAll();
     clearTimeout(saveDebounceTimer);
     saveDebounceTimer = setTimeout(saveToLocalStorage, 400);

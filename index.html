@@ -316,8 +316,10 @@
     Below level 71, class quests (1-15) and Cosmic Exploration (15-70) are how you level. Cosmic
     Exploration needs Endwalker's MSQ finished first; if you haven't, Ishgardian Restoration covers
     20-80 stretch instead. From 71 onward, Cosmic Exploration is still an option, but this tool
-    models the collectable route. It assumes 100% quality (+300% bonus EXP) and no external buffs
-    like rested EXP or food. "Craft my own components" prices out that collectable's full
+    models the collectable route. It assumes 100% quality (+300% bonus EXP) and max collectability on
+    every turn-in, with no external buffs like rested EXP or food -- turning in below max
+    collectability earns less EXP than the figures here and will fall short of the target level.
+    "Craft my own components" prices out that collectable's full
     ingredient tree at NQ. All 8 jobs are simulated together in a handful of level windows,
     matching the batches FFXIV's crafting log unlocks recipes in (job level 70 gets you recipes up
     to level 75, 74 up to 80, 80 up to 85, 84 up to 90, 90 up to 95, 94 up to 100): EXP a job earns
@@ -334,7 +336,8 @@
     Each item name links straight to its FFXIV TeamCraft item page. "Copy TeamCraft import link"
     copies a Garland Tools-format list link with every item and its exact quantity already encoded
     -- paste it into TeamCraft under Lists &rarr; the import icon &rarr; "paste your link to the
-    external list" to build a list.
+    external list" to build a list. Source for collectable EXP: FFXIV TeamCraft's collectables data,
+    read at max collectability per item.
   </footer>
 </div>
 
@@ -1102,6 +1105,7 @@
       var expAtCur = EXP_TO_NEXT[level] || 0;
       state[job] = {
         level: level, remaining: Math.max(0, expAtCur - Math.max(0, inputs[job].exp || 0)), target: target,
+        targetIsCustom: !!inputs[job].targetIsCustom,
         startLevel: level, startExpAtCur: expAtCur, startExp: Math.max(0, Math.min(expAtCur, inputs[job].exp || 0)),
         craftComponents: inputs[job].craftComponents, startedDone: level >= target, finished: level >= target,
         acc: { preExp: 0, totalTurnins: 0, counts: {}, order: [], turnInExp: 0, craftExp: 0, componentCraftExp: 0 }
@@ -1469,6 +1473,7 @@
       level: parseFloat(levelInput.value) || 1,
       exp: parseFloat(expInput.value) || 0,
       target: targetRaw ? targetRaw : 100,
+      targetIsCustom: targetInput.value !== '',
       craftComponents: !!(craftInput && craftInput.checked)
     };
   }
@@ -1481,7 +1486,7 @@
     if(s.startedDone){
       totalEl.innerHTML = '';
       progressEl.innerHTML = '';
-      bodyEl.innerHTML = s.target !== 100
+      bodyEl.innerHTML = s.targetIsCustom
         ? '<div class="job-note done">Already at or past level ' + s.target + ' -- nothing left to turn in.</div>'
         : '<div class="job-note done">Already level 100 -- nothing left to turn in.</div>';
       return { totalTurnins: 0 };
@@ -1490,7 +1495,7 @@
     var acc = s.acc;
     totalEl.innerHTML = '<b class="num">' + fmt(acc.totalTurnins) + '</b> turn-ins';
     progressEl.innerHTML = fmt(s.startExp) + ' / ' + fmt(s.startExpAtCur) + ' EXP in level ' + s.startLevel +
-      (s.target !== 100 ? ' &rarr; target lv ' + s.target : '');
+      (s.targetIsCustom ? ' &rarr; target lv ' + s.target : '');
 
     var html = '';
     if(acc.totalTurnins > 0){

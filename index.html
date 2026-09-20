@@ -275,8 +275,12 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0;
     border-bottom:1px solid var(--line);
   }
-  .modal-row:last-child{ border-bottom:none; }
   .modal-row-label{ font-size:.85rem; color: var(--ink); font-weight:500; }
+  .modal-section-title{
+    font-size:.74rem; font-weight:600; color: var(--ink-soft); text-transform:uppercase;
+    letter-spacing:.04em; margin-bottom:2px;
+  }
+  .modal-separator{ border:none; border-top:1px solid var(--line); margin:14px 0; }
   .list-link{
     font-size:.78rem; color: var(--ink-soft); text-decoration:none;
     border-bottom:1px solid var(--line); transition: color .12s, border-color .12s;
@@ -2049,7 +2053,11 @@
     var allLabel = brackets.length
       ? 'All items (' + brackets[0].lo + '-' + brackets[brackets.length - 1].hi + ')' : 'All items';
     importModalTitle.textContent = job + ' -- TeamCraft import links';
-    importModalBody.innerHTML = importModalRow(allLabel, buildGarlandImportLink(job, order, counts)) +
+    importModalBody.innerHTML =
+      '<div class="modal-section-title">Buying every component</div>' +
+      importModalRow(allLabel, buildGarlandImportLink(job, order, counts)) +
+      '<hr class="modal-separator">' +
+      '<div class="modal-section-title">Crafting your own components</div>' +
       brackets.map(function(b){ return importModalRow(b.lo + '-' + b.hi, b.url); }).join('');
     importModalOverlay.hidden = false;
   }

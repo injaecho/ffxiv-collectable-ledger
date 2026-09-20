@@ -1940,11 +1940,25 @@
   // attach a listener to the elements themselves once). Opening a job-card's breakdown collapses
   // the whole job grid to one column, which pushes that card down past whatever now-full-width
   // cards precede it -- scroll it back into view so the breakdown you just opened is what you see.
+  //
+  // A "toggle" also fires for a breakdown that merely got RE-RENDERED already open (recalcAll
+  // rewrites every job's [data-r="gil"] on every input change, preserving whichever ones were
+  // open) -- nothing the user did there warrants jumping the page back to that job. Track which
+  // job we've already scrolled for by name (DOM node identity doesn't survive the rewrite) so a
+  // same-job re-render is a no-op, while a real open -- of this job or any other -- still scrolls.
+  var scrolledForOpenJob = null;
   document.addEventListener('toggle', function(e){
     var details = e.target;
-    if(!details.classList || !details.classList.contains('gil-details') || !details.open) return;
+    if(!details.classList || !details.classList.contains('gil-details')) return;
     var card = details.closest('.job-card');
     if(!card) return;
+    var job = card.dataset.job;
+    if(!details.open){
+      if(scrolledForOpenJob === job) scrolledForOpenJob = null;
+      return;
+    }
+    if(scrolledForOpenJob === job) return;
+    scrolledForOpenJob = job;
     card.scrollIntoView({behavior:'smooth', block:'start'});
   }, true);
 

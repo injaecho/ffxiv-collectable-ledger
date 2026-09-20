@@ -1,105 +1,105 @@
 # Changelog
 
-Rough version history for the Collectable Leveling Ledger, grouped from the
-commit log. `X.Y.Z`: `Y` bumps for a notable new feature, `Z` bumps for
-smaller fixes/tweaks within that feature set. `X` is reserved for a full
-rewrite and hasn't moved yet.
+What's changed in the Collectable Leveling Ledger, roughly grouped into
+versions.
 
 ## 1.9.1 -- 2026-09-20
-- Fix raw material counts not shrinking when a component is set to "buy"
-  instead of crafted (e.g. unchecking 18 Acacia Lumber now also drops the
-  90 Acacia Logs that would've gone into crafting them)
+- Fixed: unchecking a component you'd rather buy than craft now also removes
+  the raw materials it would've needed from your shopping list (e.g. skip
+  crafting your own lumber and the logs behind it disappear too)
 
 ## 1.9.0 -- 2026-09-20
-- Add in-game item icons to each job's turn-in breakdown
-- Show each collectable's level next to its name
+- Added each collectable's in-game icon and level to the turn-in list, so
+  it's easier to spot at a glance
 
 ## 1.8.2 -- 2026-09-20
-- Rearrange job card inputs: current/target level side by side, Current EXP
-  in a bigger box below, matched in height and font size to the others
+- Rearranged the job card layout: current/target level side by side, with a
+  bigger Current EXP box below since it needs more digits
 
 ## 1.8.1 -- 2026-09-20
-- Cap the Current EXP input to the level's own digit count, blocking
-  over-cap typing outright instead of clamping after the fact
+- The Current EXP box no longer lets you type more digits than that level
+  actually allows
 
 ## 1.8.0 -- 2026-09-20
-- Add TeamCraft import links split by recipe-unlock bracket (per job and
-  consolidated), via a modal with separate "buying every component" and
-  "crafting your own" sections
-- Correct the recipe-unlock brackets to 71-75/75-80/80-85/85-90/90-95/95-100
-  and cap the Cosmic Exploration / Ishgardian Restoration mentions at 71
-- Rewrite the hint paragraph's crafting-window explanation
+- Added TeamCraft import links split by level range, so you only import the
+  collectables you can actually craft right now instead of the whole list
+- Corrected the level ranges used for those links to match how recipes
+  actually unlock (71-75, 75-80, 80-85, 85-90, 90-95, 95-100)
+- Clarified the explanation of how leveling before 71 and the crafting
+  windows after it work
 
 ## 1.7.2 -- 2026-09-20
-- Hide "gather my own raw materials" until crafting is fully on
-- Restore the max-collectability caveat; fix custom-target detection
-- Prompt to re-fetch prices when the summary has unpriced items
+- Restored a note clarifying that turn-ins need max collectability to earn
+  full EXP
+- Added a prompt to re-fetch prices when some items are showing as unpriced
+- Hid the "gather my own raw materials" option until crafting your own
+  components is fully turned on, since it doesn't apply otherwise
 
 ## 1.7.1 -- 2026-09-19
-- Fix "Buying components" silently using craft cost for craft-toggled items
-- Respect "gather my own raw materials" for top-level raw ingredients too
-- Assorted layout fixes: breakdown cards overflowing their border, opened
-  breakdowns not scrolling into view, unrelated re-renders jumping the page
+- Fixed the "buying every component" cost sometimes quietly using the
+  crafting cost instead
+- Fixed raw materials you'd already marked as free-gathered still getting
+  charged in some cases
+- Various scrolling/layout fixes to the price breakdown panels
 
 ## 1.7.0 -- 2026-09-19
-- Rework the buy/craft/gather toggles: a real per-component Craft checkbox,
-  a Gather checkbox added to the components table too, every component
-  defaults to Craft when the job crafts its own
-- Add a consolidated price breakdown across all jobs combined
+- Reworked the buy/craft toggles so every individual component (not just
+  whole jobs) can be switched between "buy it" and "craft it yourself"
+- Added a combined price breakdown across all 8 jobs at once
 
 ## 1.6.2 -- 2026-09-19
-- Price items by average recent sale instead of the single cheapest listing
-- Move the gil summary next to the EXP summary
-- Block turning off "craft my own components" while gathering is on
-- Persist item names locally so reloads don't lose them; various dropdown fixes
+- Prices are now based on the average of recent sales instead of just the
+  cheapest listing, for a more realistic estimate
+- Moved the gil cost summary next to the EXP summary for easier comparison
+- Various small dropdown and layout fixes
 
 ## 1.6.1 -- 2026-09-19
-- Only fetch gil prices on demand, cache them for 10 minutes, and surface
-  Universalis rate limits
+- Prices are now only fetched when you ask for them, and are reused for 10
+  minutes so you're not waiting on the market every time you change a number
+- Added a clearer message if Universalis is temporarily unavailable
 
 ## 1.6.0 -- 2026-09-19
-- Add a "gather my own raw materials" toggle with per-item override
-  checkboxes; render the gil breakdown as a proper table
+- Added a "gather my own raw materials" option that treats gatherable
+  materials as free, with the ability to uncheck specific ones you'd rather
+  buy anyway
 
 ## 1.5.0 -- 2026-09-19
-- Add a gil cost estimate via Universalis market prices: collapsible
-  per-job price breakdown, cascading data center/world dropdowns, items
-  linked to their Universalis listing
+- Added estimated gil costs for turn-ins, pulled from live Universalis
+  market prices for your chosen data center and world
+- Added a collapsible price breakdown per job showing exactly what you'd
+  need to buy
 
 ## 1.4.1 -- 2026-09-19
-- Fix misleading hint text around component crafting; drop the
-  "experimental" label now that the gating is correct
+- Clarified the explanation text around crafting your own components
 
 ## 1.4.0 -- 2026-09-19
-- Add self-crafted-component EXP calculation: simulate all 8 jobs jointly
-  so cross-job EXP credit actually applies, gate component crafting by
-  Dawntrail's real batched recipe unlocks, per-component and
-  select-all/deselect-all toggles
-- Split the EXP breakdown into "crafting" vs "crafting (components)"
+- Added the option to craft your own components instead of buying them,
+  with EXP credit shared correctly across all 8 jobs and unlock timing that
+  matches Dawntrail's actual recipe-unlock schedule
+- Split the EXP breakdown so crafting your final collectable and crafting
+  its components are shown separately
 
 ## 1.3.1 -- 2026-09-19
-- Link to TeamCraft's Lists page next to the consolidated import button
+- Added a link to TeamCraft's Lists page next to the import button, for
+  anyone who hasn't used TeamCraft's import feature before
 
 ## 1.3.0 -- 2026-09-19
-- Add job icons for each Disciple of the Hand (official XIVAPI class icons)
-
-## 1.2.1 -- 2026-09-19
-- Assorted code-review fixes; trim job-note wording
+- Added an icon for each crafting job
 
 ## 1.2.0 -- 2026-09-19
-- Extend collectable data down to level 71 (previously started higher) and
-  default all jobs to level 71
+- Added collectables down to level 71, so the tool now covers the full
+  71-100 leveling range instead of starting partway through it
 
 ## 1.1.1 -- 2026-09-19
-- Persist job inputs across reloads (localStorage)
-- Fix input misalignment when the "Target lv" label wraps; fix a dead
-  "already level 100" message
+- Your entered levels and EXP are now remembered when you reload the page
+- Fixed a couple of small display glitches
 
 ## 1.1.0 -- 2026-09-19
-- Replace the flat craft-completion EXP bonus with the game's real formula
-- Add a per-job and overall EXP source breakdown (turn-ins vs. crafting)
-- Add a consolidated TeamCraft import link across all jobs
+- EXP from crafting now uses the game's real formula instead of an
+  approximation, for more accurate totals
+- Added a breakdown showing how much EXP comes from turn-ins vs. crafting
+- Added a single TeamCraft import link covering every job at once
 
 ## 1.0.0 -- 2026-09-19
-- Initial release: leveling calculator for all 8 crafting jobs via
-  Rarefied collectable turn-ins
+- Initial release: a leveling calculator for all 8 crafting jobs based on
+  turning in Rarefied collectables

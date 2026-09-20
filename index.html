@@ -234,6 +234,8 @@
   }
   .brk-name:hover, .brk-name:focus-visible{ color: var(--teal); border-bottom-color: var(--teal); }
   .brk-icon{ flex:none; border-radius:4px; background: var(--paper-sunken); }
+  .brk-name-text{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .brk-level{ font-size:.72rem; color: var(--ink-faint); }
   .brk-count{ font-family:'IBM Plex Mono', monospace; font-weight:600; flex:none; }
 
   .job-note{
@@ -1681,9 +1683,11 @@
     acc.order.forEach(function(label){
       var url = teamcraftItemUrl(job, label);
       var iconUrl = itemIconUrl(job, label);
+      var level = LABEL_TO_LEVEL_CACHE[job][label];
       html += '<div class="brk-row"><a class="brk-name" href="' + url + '" target="_blank" rel="noopener">' +
         (iconUrl ? '<img class="brk-icon" src="' + iconUrl + '" alt="" width="32" height="32" loading="lazy">' : '') +
-        label + '</a><span class="brk-count num">' + fmt(acc.counts[label]) + '×</span></div>';
+        '<span class="brk-name-text">' + label + '<span class="brk-level">Lv. ' + level + '</span></span>' +
+        '</a><span class="brk-count num">' + fmt(acc.counts[label]) + '×</span></div>';
     });
     html += '</div>';
     html += '<div class="import-row">' +

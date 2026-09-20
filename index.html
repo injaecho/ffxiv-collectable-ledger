@@ -829,20 +829,26 @@
     return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
   }
 
-  // Splits one job's turn-in list into the same recipe-unlock batches the hint text describes
-  // (see LEVEL_BRACKETS below) -- each is its own Garland import link so a player can pull in just
-  // the items they can actually craft with what's currently unlocked, instead of the whole plan at
-  // once. A bracket with nothing left in `order` (already leveled past it, or never reached by a
-  // custom target) is left out rather than shown as an empty link.
-  function buildBracketImportLinks(job, order, counts){
+  // Splits one or more jobs' turn-in lists into the same recipe-unlock batches the hint text
+  // describes (see LEVEL_BRACKETS below) -- each is its own Garland import link so a player can pull
+  // in just the items they can actually craft with what's currently unlocked, instead of the whole
+  // plan at once. `sources` is [{job, order, counts}, ...] -- a single entry for one job's modal, or
+  // one per job for the consolidated modal, merged into one link per bracket. A bracket with nothing
+  // left across every source (already leveled past it, or never reached by a custom target) is left
+  // out rather than shown as an empty link.
+  function buildBracketImportLinks(sources){
     return LEVEL_BRACKETS.map(function(b){
-      var lo = b.floor, hi = Math.min(b.nextFloor, 100);
-      var subset = order.filter(function(label){
-        var lvl = LABEL_TO_LEVEL_CACHE[job][label];
-        return lvl > b.floor && lvl <= b.nextFloor;
+      var parts = [];
+      sources.forEach(function(s){
+        var subset = s.order.filter(function(label){
+          var lvl = LABEL_TO_LEVEL_CACHE[s.job][label];
+          return lvl > b.floor && lvl <= b.nextFloor;
+        });
+        parts = parts.concat(garlandPartsFor(s.job, subset, s.counts));
       });
-      if(!subset.length) return null;
-      return { lo: lo, hi: hi, url: buildGarlandImportLink(job, subset, counts) };
+      if(!parts.length) return null;
+      return { lo: b.floor, hi: Math.min(b.nextFloor, 100),
+        url: 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}' };
     }).filter(Boolean);
   }
 
@@ -1442,6 +1448,7 @@
   var fetchGilPricesBtn = document.getElementById('fetchGilPricesBtn');
   var lastGilState = null; // set by every recalcAll, reused by the fetch button so it doesn't
   var lastGilCards = null; // need to recompute the whole leveling simulation just to fetch prices
+  var lastPerJobResults = null; // set by every recalcAll, reused by the consolidated import button
   var gatherRow = document.getElementById('gatherRow');
   var gatherOwnCheckbox = document.getElementById('gatherOwnCheckbox');
   var gatherSubToggles = document.getElementById('gatherSubToggles');
@@ -1646,6 +1653,7 @@
         grandComponentCraftExp += r.componentCraftExp;
       }
     });
+    lastPerJobResults = perJobResults;
     var hasGrandComponentExp = grandComponentCraftExp > 0;
     var grandExpTotal = grandTurnInExp + grandCraftExp + grandComponentCraftExp;
     var grandTurnInPct = grandExpTotal > 0 ? Math.round(grandTurnInExp / grandExpTotal * 100) : 0;
@@ -1665,15 +1673,13 @@
         '<span class="val num">' + fmt(grandComponentCraftExp) + ' (' + grandComponentPct + '%)</span></div>' : '');
 
     if(perJobResults.length){
-      var combinedUrl = buildCombinedGarlandImportLink(perJobResults);
       consolidatedBar.hidden = false;
       consolidatedBar.innerHTML =
         '<div class="summary-item"><span class="lbl">All jobs, one list</span><span class="val num">' +
           distinctItems + ' items &middot; ' + fmt(grandTotal) + ' turn-ins</span></div>' +
         '<div class="import-row">' +
-          '<button type="button" class="copy-btn" data-copy="' + combinedUrl.replace(/"/g, '&quot;') + '">' +
+          '<button type="button" class="copy-btn import-open-btn" data-job="__consolidated__">' +
             'Copy consolidated TeamCraft import link</button>' +
-          '<span class="copy-flag" hidden>Copied!</span>' +
           '<a class="list-link" href="https://ffxivteamcraft.com/lists" target="_blank" rel="noopener">' +
             'Open TeamCraft lists</a>' +
         '</div>';
@@ -2047,14 +2053,14 @@
       '<span class="copy-flag" hidden>Copied!</span></span></div>';
   }
 
-  function openImportModal(job, order, counts){
-    var brackets = buildBracketImportLinks(job, order, counts);
+  function openImportModal(title, allUrl, sources){
+    var brackets = buildBracketImportLinks(sources);
     var allLabel = brackets.length
       ? 'All items (' + brackets[0].lo + '-' + brackets[brackets.length - 1].hi + ')' : 'All items';
-    importModalTitle.textContent = job + ' -- TeamCraft import links';
+    importModalTitle.textContent = title;
     importModalBody.innerHTML =
       '<div class="modal-section-title">Buying every component</div>' +
-      importModalRow(allLabel, buildGarlandImportLink(job, order, counts)) +
+      importModalRow(allLabel, allUrl) +
       '<hr class="modal-separator">' +
       '<div class="modal-section-title">Crafting your own components</div>' +
       brackets.map(function(b){ return importModalRow(b.lo + '-' + b.hi, b.url); }).join('');
@@ -2069,9 +2075,16 @@
     var openBtn = e.target.closest('.import-open-btn');
     if(!openBtn) return;
     var job = openBtn.dataset.job;
+    if(job === '__consolidated__'){
+      if(!lastPerJobResults || !lastPerJobResults.length) return;
+      openImportModal('All jobs -- TeamCraft import links',
+        buildCombinedGarlandImportLink(lastPerJobResults), lastPerJobResults);
+      return;
+    }
     var s = lastGilState && lastGilState[job];
     if(!s || !s.acc) return;
-    openImportModal(job, s.acc.order, s.acc.counts);
+    openImportModal(job + ' -- TeamCraft import links', buildGarlandImportLink(job, s.acc.order, s.acc.counts),
+      [{ job: job, order: s.acc.order, counts: s.acc.counts }]);
   });
 
   importModalClose.addEventListener('click', closeImportModal);

@@ -252,6 +252,31 @@
   .copy-btn:hover{ background: color-mix(in srgb, var(--teal) 18%, var(--teal-soft)); }
   .copy-btn:disabled{ opacity:.6; cursor:not-allowed; }
   .copy-flag{ font-size:.76rem; color: var(--teal); font-weight:600; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background: rgba(10,14,18,.6); display:flex; align-items:center;
+    justify-content:center; padding:20px; z-index:50;
+  }
+  .modal-overlay[hidden]{ display:none; }
+  .modal-card{
+    background: var(--paper); border:1px solid var(--line); border-radius:14px; padding:18px 22px 20px;
+    box-shadow: var(--shadow); max-width:420px; width:100%; max-height:80vh; overflow-y:auto;
+  }
+  .modal-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+  .modal-head h2{
+    font-family:'Spectral', Georgia, serif; font-size:1.05rem; margin:0; font-weight:600;
+  }
+  .modal-close{
+    background:none; border:none; color: var(--ink-faint); font-size:1.3rem; line-height:1; cursor:pointer;
+    padding:2px 8px; border-radius:6px;
+  }
+  .modal-close:hover{ color: var(--ink); background: var(--paper-sunken); }
+  .modal-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .modal-row:last-child{ border-bottom:none; }
+  .modal-row-label{ font-size:.85rem; color: var(--ink); font-weight:500; }
   .list-link{
     font-size:.78rem; color: var(--ink-soft); text-decoration:none;
     border-bottom:1px solid var(--line); transition: color .12s, border-color .12s;
@@ -339,6 +364,16 @@
     external list" to build a list. Source for collectable EXP: FFXIV TeamCraft's collectables data,
     read at max collectability per item.
   </footer>
+</div>
+
+<div class="modal-overlay" id="importModalOverlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+    <div class="modal-head">
+      <h2 id="importModalTitle"></h2>
+      <button type="button" class="modal-close" id="importModalClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="importModalBody"></div>
+  </div>
 </div>
 
 <script>
@@ -794,6 +829,23 @@
   function buildGarlandImportLink(job, order, counts){
     var parts = garlandPartsFor(job, order, counts);
     return 'https://garlandtools.org/db/#group/{' + parts.join('|') + '}';
+  }
+
+  // Splits one job's turn-in list into the same recipe-unlock batches the hint text describes
+  // (see LEVEL_BRACKETS below) -- each is its own Garland import link so a player can pull in just
+  // the items they can actually craft with what's currently unlocked, instead of the whole plan at
+  // once. A bracket with nothing left in `order` (already leveled past it, or never reached by a
+  // custom target) is left out rather than shown as an empty link.
+  function buildBracketImportLinks(job, order, counts){
+    return LEVEL_BRACKETS.map(function(b){
+      var lo = b.floor + 1, hi = Math.min(b.nextFloor, 100);
+      var subset = order.filter(function(label){
+        var lvl = LABEL_TO_LEVEL_CACHE[job][label];
+        return lvl > b.floor && lvl <= b.nextFloor;
+      });
+      if(!subset.length) return null;
+      return { lo: lo, hi: hi, url: buildGarlandImportLink(job, subset, counts) };
+    }).filter(Boolean);
   }
 
   // Example starting point -- plainly a placeholder, replace with your own levels/EXP per job.
@@ -1533,11 +1585,9 @@
         '</a><span class="brk-count num">' + fmt(acc.counts[label]) + '×</span></div>';
     });
     html += '</div>';
-    var importUrl = buildGarlandImportLink(job, acc.order, acc.counts);
     html += '<div class="import-row">' +
-      '<button type="button" class="copy-btn" data-copy="' + importUrl.replace(/"/g, '&quot;') + '">' +
+      '<button type="button" class="copy-btn import-open-btn" data-job="' + job + '">' +
         'Copy TeamCraft import link</button>' +
-      '<span class="copy-flag" hidden>Copied!</span>' +
       '</div>';
     bodyEl.innerHTML = html;
 
@@ -1985,6 +2035,49 @@
     } else {
       fallbackCopy(url, showCopied);
     }
+  });
+
+  var importModalOverlay = document.getElementById('importModalOverlay');
+  var importModalTitle = document.getElementById('importModalTitle');
+  var importModalBody = document.getElementById('importModalBody');
+  var importModalClose = document.getElementById('importModalClose');
+
+  function importModalRow(label, url){
+    return '<div class="modal-row"><span class="modal-row-label">' + label + '</span>' +
+      '<span class="import-row"><button type="button" class="copy-btn" data-copy="' +
+      url.replace(/"/g, '&quot;') + '">Copy link</button>' +
+      '<span class="copy-flag" hidden>Copied!</span></span></div>';
+  }
+
+  function openImportModal(job, order, counts){
+    var brackets = buildBracketImportLinks(job, order, counts);
+    var allLabel = brackets.length
+      ? 'All items (' + brackets[0].lo + '-' + brackets[brackets.length - 1].hi + ')' : 'All items';
+    importModalTitle.textContent = job + ' -- TeamCraft import links';
+    importModalBody.innerHTML = importModalRow(allLabel, buildGarlandImportLink(job, order, counts)) +
+      brackets.map(function(b){ return importModalRow(b.lo + '-' + b.hi, b.url); }).join('');
+    importModalOverlay.hidden = false;
+  }
+
+  function closeImportModal(){
+    importModalOverlay.hidden = true;
+  }
+
+  document.body.addEventListener('click', function(e){
+    var openBtn = e.target.closest('.import-open-btn');
+    if(!openBtn) return;
+    var job = openBtn.dataset.job;
+    var s = lastGilState && lastGilState[job];
+    if(!s || !s.acc) return;
+    openImportModal(job, s.acc.order, s.acc.counts);
+  });
+
+  importModalClose.addEventListener('click', closeImportModal);
+  importModalOverlay.addEventListener('click', function(e){
+    if(e.target === importModalOverlay) closeImportModal();
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !importModalOverlay.hidden) closeImportModal();
   });
 
   function fallbackCopy(text, done){

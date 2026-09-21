@@ -146,6 +146,29 @@
   .field-exp input[type=number]{ padding:0 12px; height:36px; }
   .field input:focus{ outline: 2px solid var(--teal); outline-offset:1px; }
 
+  /* Native number-input spin buttons are browser-drawn and can't be recolored, so they're hidden
+     everywhere; .spin-input then overlays its own matching pair for Current level/Target lv.
+     Current EXP gets no replacement at all -- there's no realistic use for stepping a number that
+     size one unit at a time. */
+  .field input[type=number]{ -moz-appearance:textfield; }
+  .field input[type=number]::-webkit-outer-spin-button,
+  .field input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .spin-input{ position:relative; }
+  .spin-input input[type=number]{ padding-right:24px; }
+  .spin-btns{
+    position:absolute; top:1px; right:1px; bottom:1px; width:20px; display:flex; flex-direction:column;
+    border-left:1px solid var(--line); border-radius:0 7px 7px 0; overflow:hidden;
+  }
+  .spin-btn{
+    flex:1 1 50%; display:flex; align-items:center; justify-content:center; background:none; border:none;
+    padding:0; margin:0; color: var(--ink-faint); cursor:pointer; transition: color .12s, background .12s;
+  }
+  .spin-btn:hover{ color: var(--teal); background: var(--paper-sunken); }
+  .spin-up{ border-bottom:1px solid var(--line); }
+  .spin-btn::before{ content:''; width:0; height:0; border-left:3px solid transparent; border-right:3px solid transparent; }
+  .spin-up::before{ border-bottom:4px solid currentColor; }
+  .spin-down::before{ border-top:4px solid currentColor; }
+
   .craft-toggle{
     display:flex; align-items:center; gap:6px; font-size:.78rem; color: var(--ink-soft); cursor:pointer;
   }
@@ -1768,6 +1791,12 @@
     };
   }
 
+  var SPIN_BUTTONS_HTML =
+    '<span class="spin-btns">' +
+      '<button type="button" class="spin-btn spin-up" data-spin="1" tabindex="-1" aria-label="Increase"></button>' +
+      '<button type="button" class="spin-btn spin-down" data-spin="-1" tabindex="-1" aria-label="Decrease"></button>' +
+    '</span>';
+
   JOB_ORDER.forEach(function(job){
     var card = document.createElement('div');
     card.className = 'job-card';
@@ -1778,9 +1807,11 @@
         '<span class="job-total" data-r="total"></span></div>' +
       '<div class="job-inputs">' +
         '<div class="field"><label>Current level</label>' +
-          '<input type="number" min="1" max="100" value="' + ex[0] + '" data-f="level"></div>' +
+          '<div class="spin-input"><input type="number" min="1" max="100" value="' + ex[0] + '" data-f="level">' +
+          SPIN_BUTTONS_HTML + '</div></div>' +
         '<div class="field"><label>Target lv <span class="opt">(optional)</span></label>' +
-          '<input type="number" min="2" max="100" placeholder="100" data-f="target"></div>' +
+          '<div class="spin-input"><input type="number" min="2" max="100" placeholder="100" data-f="target">' +
+          SPIN_BUTTONS_HTML + '</div></div>' +
         '<div class="field field-exp"><label>Current EXP</label>' +
           '<input type="number" min="0" step="1" value="' + ex[1] + '" data-f="exp"></div>' +
       '</div>' +
@@ -1826,6 +1857,18 @@
     if(start == null || end == null){ start = current.length; end = current.length; }
     var next = (current.slice(0, start) + e.data + current.slice(end)).replace(/\D/g, '');
     if(next.length > expDigitCap(card)) e.preventDefault();
+  });
+
+  // Custom spin buttons for Current level/Target lv, replacing the browser-drawn ones hidden via
+  // CSS. stepUp/stepDown are the same native methods those browser-drawn buttons call, so min/max
+  // clamping and empty-value handling match built-in behavior exactly -- they just don't fire an
+  // input event on their own, so that's dispatched by hand for recalcAll/localStorage to pick up.
+  jobGrid.addEventListener('click', function(e){
+    var btn = e.target.closest('.spin-btn');
+    if(!btn) return;
+    var input = btn.closest('.spin-input').querySelector('input[type=number]');
+    if(btn.dataset.spin === '1') input.stepUp(); else input.stepDown();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 
   // Reads one card's raw inputs -- no DOM writes, no simulation. recalcAll gathers every card's

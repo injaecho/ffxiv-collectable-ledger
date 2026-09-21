@@ -3,6 +3,12 @@
 What's changed in the Collectable Leveling Ledger, roughly grouped into
 versions.
 
+## 1.10.0 -- 2026-09-20
+- Replaced the default scrollbar with a thinner, more minimal one, including
+  inside the Changelog window
+- Current level and Target lv now use matching, custom-styled up/down
+  buttons; Current EXP no longer shows them
+
 ## 1.9.1 -- 2026-09-20
 - Fixed: unchecking a component you'd rather buy than craft now also removes
   the raw materials it would've needed from your shopping list (e.g. skip
